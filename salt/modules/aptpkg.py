@@ -1488,7 +1488,6 @@ def _consolidate_repo_sources(sources):
     repos = [s for s in sources.list if not s.invalid]
 
     for repo in repos:
-        repo.uri = repo.uri.rstrip('/')
         # future lint: disable=blacklisted-function
         key = str((getattr(repo, 'architectures', []),
                    repo.disabled, repo.type, repo.uri, repo.dist))
@@ -1619,7 +1618,7 @@ def list_repos(**kwargs):
         repo['enabled'] = not repo['disabled']  # This is for compatibility with the other modules
         repo['dist'] = source.dist
         repo['type'] = source.type
-        repo['uri'] = source.uri.rstrip('/')
+        repo['uri'] = source.uri
         repo['line'] = salt.utils.pkg.deb.strip_uri(source.line.strip())
         repo['architectures'] = getattr(source, 'architectures', [])
         repos.setdefault(source.uri, []).append(repo)
@@ -2315,7 +2314,7 @@ def mod_repo(repo, saltenv='base', **kwargs):
         # and the resulting source line.  The idea here is to ensure
         # we are not returning bogus data because the source line
         # has already been modified on a previous run.
-        repo_matches = source.type == repo_type and source.uri.rstrip('/') == repo_uri.rstrip('/') and source.dist == repo_dist
+        repo_matches = source.type == repo_type and source.uri == repo_uri and source.dist == repo_dist
         kw_matches = source.dist == kw_dist and source.type == kw_type
 
         if repo_matches or kw_matches:
@@ -2444,7 +2443,7 @@ def expand_repo_def(**kwargs):
     sanitized['disabled'] = source_entry.disabled
     sanitized['dist'] = source_entry.dist
     sanitized['type'] = source_entry.type
-    sanitized['uri'] = source_entry.uri.rstrip('/')
+    sanitized['uri'] = source_entry.uri
     sanitized['line'] = source_entry.line.strip()
     sanitized['architectures'] = getattr(source_entry, 'architectures', [])
 
