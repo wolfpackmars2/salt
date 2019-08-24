@@ -1798,10 +1798,11 @@ def del_repo(repo, **kwargs):
                 msg = 'Repo \'{0}\' has been removed from {1}.\n'
                 if count == 0 and 'sources.list.d/' in repo_file:
                     if os.path.isfile(repo_file):
-                        msg = ('File {1} containing repo \'{0}\' has been '
+                        msg = ('File {1} containing repo \'{0}\' can be '
                                'removed.')
                         try:
                             os.remove(repo_file)
+                            msg.replace('can be', 'has been')
                         except OSError:
                             pass
                 ret += msg.format(repo, repo_file)
