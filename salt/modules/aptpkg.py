@@ -1497,7 +1497,7 @@ def _consolidate_repo_sources(sources):
             combined_comps = set(repo.comps).union(set(combined.comps))
             consolidated[key].comps = list(combined_comps)
         else:
-            consolidated[key] = sourceslist.SourceEntry(salt.utils.pkg.deb.strip_uri(repo.line))
+            consolidated[key] = sourceslist.SourceEntry(repo.line)
 
         if repo.file != base_file:
             delete_files.add(repo.file)
@@ -1619,7 +1619,7 @@ def list_repos(**kwargs):
         repo['dist'] = source.dist
         repo['type'] = source.type
         repo['uri'] = source.uri
-        repo['line'] = salt.utils.pkg.deb.strip_uri(source.line.strip())
+        repo['line'] = source.line.strip()
         repo['architectures'] = getattr(source, 'architectures', [])
         repos.setdefault(source.uri, []).append(repo)
     return repos
@@ -2409,7 +2409,7 @@ def expand_repo_def(**kwargs):
     _check_apt()
 
     sanitized = {}
-    repo = salt.utils.pkg.deb.strip_uri(kwargs['repo'])
+    repo = kwargs['repo']
     if repo.startswith('ppa:') and __grains__['os'] in ('Ubuntu', 'Mint', 'neon'):
         dist = __grains__['lsb_distrib_codename']
         owner_name, ppa_name = repo[4:].split('/', 1)
