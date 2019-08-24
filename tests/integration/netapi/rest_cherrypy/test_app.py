@@ -1,27 +1,26 @@
 # coding: utf-8
 
-# Import salttesting libs
-from salttesting import mock
-from salttesting.unit import skipIf
-from salttesting.helpers import ensure_in_syspath
-ensure_in_syspath('../../../')
+# Import python libs
+from __future__ import absolute_import
+import os
+import shutil
+import logging
 
-from salt.exceptions import EauthAuthenticationError
-from tests.utils import BaseRestCherryPyTest
+# Import salt libs
+import salt.utils.json
+import salt.utils.files
+import salt.utils.stringutils
+
+# Import test support libs
+import tests.support.cherrypy_testclasses as cptc
 
 # Import 3rd-party libs
-# pylint: disable=import-error,unused-import
-from salt.ext.six.moves.urllib.parse import urlencode  # pylint: disable=no-name-in-module
-try:
-    import cherrypy
-    HAS_CHERRYPY = True
-except ImportError:
-    HAS_CHERRYPY = False
-# pylint: enable=import-error,unused-import
+from salt.ext.six.moves.urllib.parse import urlencode  # pylint: disable=no-name-in-module,import-error
+
+log = logging.getLogger(__name__)
 
 
-@skipIf(HAS_CHERRYPY is False, 'CherryPy not installed')
-class TestAuth(BaseRestCherryPyTest):
+class TestAuth(cptc.BaseRestCherryPyTest):
     def test_get_root_noauth(self):
         '''
         GET requests to the root URL should not require auth
@@ -51,32 +50,16 @@ class TestAuth(BaseRestCherryPyTest):
         self.assertEqual(response.status, '401 Unauthorized')
 
 
-class TestLogin(BaseRestCherryPyTest):
+class TestLogin(cptc.BaseRestCherryPyTest):
     auth_creds = (
             ('username', 'saltdev'),
             ('password', 'saltdev'),
             ('eauth', 'auto'))
 
-    @mock.patch('salt.auth.Resolver', autospec=True)
-    def setUp(self, Resolver, *args, **kwargs):
-        super(TestLogin, self).setUp(*args, **kwargs)
-
-        self.app.salt.auth.Resolver = Resolver
-        self.Resolver = Resolver
-
     def test_good_login(self):
         '''
         Test logging in
         '''
-        # Mock mk_token for a positive return
-        self.Resolver.return_value.mk_token.return_value = {
-            'token': '6d1b722e',
-            'start': 1363805943.776223,
-            'expire': 1363849143.776224,
-            'name': 'saltdev',
-            'eauth': 'auto',
-        }
-
         body = urlencode(self.auth_creds)
         request, response = self.request('/login', method='POST', body=body,
             headers={
@@ -89,9 +72,6 @@ class TestLogin(BaseRestCherryPyTest):
         '''
         Test logging in
         '''
-        # Mock mk_token for a negative return
-        self.Resolver.return_value.mk_token.return_value = {}
-
         body = urlencode({'totally': 'invalid_creds'})
         request, response = self.request('/login', method='POST', body=body,
             headers={
@@ -112,9 +92,9 @@ class TestLogin(BaseRestCherryPyTest):
         self.assertEqual(response.status, '200 OK')
 
 
-class TestRun(BaseRestCherryPyTest):
+class TestRun(cptc.BaseRestCherryPyTest):
     auth_creds = (
-        ('username', 'saltdev'),
+        ('username', 'saltdev_auto'),
         ('password', 'saltdev'),
         ('eauth', 'auto'))
 
@@ -131,14 +111,10 @@ class TestRun(BaseRestCherryPyTest):
         cmd = dict(self.low, **dict(self.auth_creds))
         body = urlencode(cmd)
 
-        # Mock the interaction with Salt so we can focus on the API.
-        with mock.patch.object(self.app.salt.netapi.NetapiClient, 'run',
-                return_value=True):
-            request, response = self.request('/run', method='POST', body=body,
-                headers={
-                    'content-type': 'application/x-www-form-urlencoded'
-            })
-
+        request, response = self.request('/run', method='POST', body=body,
+            headers={
+                'content-type': 'application/x-www-form-urlencoded'
+        })
         self.assertEqual(response.status, '200 OK')
 
     def test_run_bad_login(self):
@@ -148,43 +124,235 @@ class TestRun(BaseRestCherryPyTest):
         cmd = dict(self.low, **{'totally': 'invalid_creds'})
         body = urlencode(cmd)
 
-        # Mock the interaction with Salt so we can focus on the API.
-        with mock.patch.object(self.app.salt.netapi.NetapiClient, 'run',
-                side_effect=EauthAuthenticationError('Oh noes!')):
-            request, response = self.request('/run', method='POST', body=body,
-                headers={
-                    'content-type': 'application/x-www-form-urlencoded'
-            })
-
+        request, response = self.request('/run', method='POST', body=body,
+            headers={
+                'content-type': 'application/x-www-form-urlencoded'
+        })
         self.assertEqual(response.status, '401 Unauthorized')
 
+    def test_run_empty_token(self):
+        '''
+        Test the run URL with empty token
+        '''
+        cmd = dict(self.low, **{'token': ''})
+        body = urlencode(cmd)
 
-class TestWebhookDisableAuth(BaseRestCherryPyTest):
-    __opts__ = {
-        'rest_cherrypy': {
-            'port': 8000,
-            'debug': True,
-            'webhook_disable_auth': True,
-        },
-    }
+        request, response = self.request('/run', method='POST', body=body,
+            headers={
+                'content-type': 'application/x-www-form-urlencoded'
+        })
+        assert response.status == '401 Unauthorized'
 
-    @mock.patch('salt.utils.event.get_event', autospec=True)
-    def setUp(self, get_event, *args, **kwargs):
-        super(TestWebhookDisableAuth, self).setUp(*args, **kwargs)
+    def test_run_empty_token_upercase(self):
+        '''
+        Test the run URL with empty token with upercase characters
+        '''
+        cmd = dict(self.low, **{'ToKen': ''})
+        body = urlencode(cmd)
 
-        self.app.salt.utils.event.get_event = get_event
-        self.get_event = get_event
+        request, response = self.request('/run', method='POST', body=body,
+            headers={
+                'content-type': 'application/x-www-form-urlencoded'
+        })
+        assert response.status == '401 Unauthorized'
+
+    def test_run_wrong_token(self):
+        '''
+        Test the run URL with incorrect token
+        '''
+        cmd = dict(self.low, **{'token': 'bad'})
+        body = urlencode(cmd)
+
+        request, response = self.request('/run', method='POST', body=body,
+            headers={
+                'content-type': 'application/x-www-form-urlencoded'
+        })
+        assert response.status == '401 Unauthorized'
+
+    def test_run_pathname_token(self):
+        '''
+        Test the run URL with path that exists in token
+        '''
+        cmd = dict(self.low, **{'token': os.path.join('etc', 'passwd')})
+        body = urlencode(cmd)
+
+        request, response = self.request('/run', method='POST', body=body,
+            headers={
+                'content-type': 'application/x-www-form-urlencoded'
+        })
+        assert response.status == '401 Unauthorized'
+
+    def test_run_pathname_not_exists_token(self):
+        '''
+        Test the run URL with path that does not exist in token
+        '''
+        cmd = dict(self.low, **{'token': os.path.join('tmp', 'doesnotexist')})
+        body = urlencode(cmd)
+
+        request, response = self.request('/run', method='POST', body=body,
+            headers={
+                'content-type': 'application/x-www-form-urlencoded'
+        })
+        assert response.status == '401 Unauthorized'
+
+    def test_run_extra_parameters(self):
+        '''
+        Test the run URL with good auth credentials
+        '''
+        cmd = dict(self.low, **dict(self.auth_creds))
+        cmd['id_'] = 'someminionname'
+        body = urlencode(cmd)
+
+        request, response = self.request('/run', method='POST', body=body,
+            headers={
+                'content-type': 'application/x-www-form-urlencoded'
+        })
+        self.assertEqual(response.status, '200 OK')
+
+
+class TestWebhookDisableAuth(cptc.BaseRestCherryPyTest):
+
+    def __get_opts__(self):
+        return {
+            'rest_cherrypy': {
+                'port': 8000,
+                'debug': True,
+                'webhook_disable_auth': True,
+            },
+        }
 
     def test_webhook_noauth(self):
         '''
         Auth can be disabled for requests to the webhook URL
         '''
-        # Mock fire_event() since we're only testing auth here.
-        self.get_event.return_value.fire_event.return_value = True
-
         body = urlencode({'foo': 'Foo!'})
         request, response = self.request('/hook', method='POST', body=body,
             headers={
                 'content-type': 'application/x-www-form-urlencoded'
         })
+        self.assertEqual(response.status, '200 OK')
+
+
+class TestArgKwarg(cptc.BaseRestCherryPyTest):
+    auth_creds = (
+        ('username', 'saltdev'),
+        ('password', 'saltdev'),
+        ('eauth', 'auto'))
+
+    low = (
+        ('client', 'runner'),
+        ('fun', 'test.arg'),
+        # use singular form for arg and kwarg
+        ('arg', [1234]),
+        ('kwarg', {'ext_source': 'redis'}),
+    )
+
+    def _token(self):
+        '''
+        Return the token
+        '''
+        body = urlencode(self.auth_creds)
+        request, response = self.request(
+            '/login',
+            method='POST',
+            body=body,
+            headers={
+                'content-type': 'application/x-www-form-urlencoded'
+            }
+        )
+        return response.headers['X-Auth-Token']
+
+    def test_accepts_arg_kwarg_keys(self):
+        '''
+        Ensure that (singular) arg and kwarg keys (for passing parameters)
+        are supported by runners.
+        '''
+        cmd = dict(self.low)
+        body = salt.utils.json.dumps(cmd)
+
+        request, response = self.request(
+            '/',
+            method='POST',
+            body=body,
+            headers={
+                'content-type': 'application/json',
+                'X-Auth-Token': self._token(),
+                'Accept': 'application/json',
+            }
+        )
+        resp = salt.utils.json.loads(salt.utils.stringutils.to_str(response.body[0]))
+        self.assertEqual(resp['return'][0]['args'], [1234])
+        self.assertEqual(resp['return'][0]['kwargs'],
+                         {'ext_source': 'redis'})
+
+
+class TestJobs(cptc.BaseRestCherryPyTest):
+    auth_creds = (
+        ('username', 'saltdev_auto'),
+        ('password', 'saltdev'),
+        ('eauth', 'auto'))
+
+    low = (
+        ('client', 'local'),
+        ('tgt', '*'),
+        ('fun', 'test.ping'),
+    )
+
+    def _token(self):
+        '''
+        Return the token
+        '''
+        body = urlencode(self.auth_creds)
+        request, response = self.request(
+            '/login',
+            method='POST',
+            body=body,
+            headers={
+                'content-type': 'application/x-www-form-urlencoded'
+            }
+        )
+        return response.headers['X-Auth-Token']
+
+    def _add_job(self):
+        '''
+        Helper function to add a job to the job cache
+        '''
+        cmd = dict(self.low, **dict(self.auth_creds))
+        body = urlencode(cmd)
+
+        request, response = self.request('/run', method='POST', body=body,
+            headers={
+                'content-type': 'application/x-www-form-urlencoded'
+        })
+        self.assertEqual(response.status, '200 OK')
+
+    def _delete_master_local_job_cache(self):
+        job_cache_directory = os.path.join(self.config['cachedir'], 'jobs')
+        if not os.path.exists(job_cache_directory):
+            return
+        for root, dirs, files in salt.utils.files.safe_walk(job_cache_directory, followlinks=False):
+            for name in dirs:
+                try:
+                    directory = os.path.join(root, name)
+                    shutil.rmtree(directory)
+                except OSError:
+                    continue
+
+    def test_all_jobs(self):
+        '''
+        test query to /jobs returns job data
+        '''
+        # We really don't care about any previous job history, just the one job we add next
+        self._delete_master_local_job_cache()
+        self._add_job()
+
+        request, response = self.request(
+            '/jobs', method='GET',
+            headers={
+                'Accept': 'application/json',
+                'X-Auth-Token': self._token(),
+            }
+        )
+        resp = salt.utils.json.loads(salt.utils.stringutils.to_str(response.body[0]))
+        self.assertIn('test.ping', str(resp['return']))
         self.assertEqual(response.status, '200 OK')

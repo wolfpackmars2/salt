@@ -1,8 +1,10 @@
-=================
-State Enforcement
-=================
+.. _state-system-reference:
 
-Salt offers an optional interface to manage the configuration or "state" of the
+======================
+State System Reference
+======================
+
+Salt offers an interface to manage the configuration or "state" of the
 Salt minions. This interface is a fully capable mechanism used to enforce the
 state of systems from a central manager.
 
@@ -25,7 +27,7 @@ configure and manage a few servers or a few thousand servers. It allows
 configurations to be kept under version control.
 
 Salt States is an extension of the Salt Modules that we discussed in the
-previous :doc:`remote execution </topics/tutorials/modules>` tutorial. Instead
+previous :ref:`remote execution <tutorial-remote-execution-modules>` tutorial. Instead
 of calling one-off executions the state of a system can be easily defined and
 then enforced.
 
@@ -39,7 +41,7 @@ an understanding of Salt states and how to write the states is needed as well.
 .. note::
 
     States are compiled and executed only on minions that have been targeted.
-    To execute functions directly on masters, see :doc:`runners </ref/runners/index>`.
+    To execute functions directly on masters, see :ref:`runners <runners>`.
 
 Salt SLS System
 ---------------
@@ -51,7 +53,7 @@ The Salt States are files which contain the information about how to configure
 Salt minions. The states are laid out in a directory tree and can be written in
 many different formats.
 
-The contents of the files and they way they are laid out is intended to be as
+The contents of the files and the way they are laid out is intended to be as
 simple as possible while allowing for maximum flexibility. The files are laid
 out in states and contains information about how the minion needs to be
 configured.
@@ -113,19 +115,17 @@ Here is an example of a Salt State:
 .. code-block:: yaml
 
     vim:
-      pkg:
-        - installed
+      pkg.installed: []
 
     salt:
-      pkg:
-        - latest
+      pkg.latest:
+        - name: salt
       service.running:
-        - require:
-          - file: /etc/salt/minion
-          - pkg: salt
         - names:
           - salt-master
           - salt-minion
+        - require:
+          - pkg: salt
         - watch:
           - file: /etc/salt/minion
 
@@ -147,16 +147,17 @@ watched file updated.
 The Top File
 ````````````
 
-The top file controls the mapping between minions and the states which should be
-applied to them.
+The top file controls the mapping between minions and the states which should
+be applied to them.
 
-The top file specifies which minions should have which SLS files applied and which
-environments they should draw those SLS files from.
+The top file specifies which minions should have which SLS files applied and
+which environments they should draw those SLS files from.
 
 The top file works by specifying environments on the top-level.
 
-Each environment contains globs to match minions. Finally, each glob contains a list of
-lists of Salt states to apply to matching minions:
+Each environment contains :ref:`target expressions <targeting>` to match
+minions. Finally, each target expression contains a list of Salt states to
+apply to matching minions:
 
 .. code-block:: yaml
 
@@ -172,12 +173,35 @@ lists of Salt states to apply to matching minions:
 This above example uses the base environment which is built into the default
 Salt setup.
 
-The base environment has two globs. First, the '*' glob contains a list of
-SLS files to apply to all minions.
+The base environment has target expressions. The first one matches all minions,
+and the SLS files below it apply to all minions.
 
-The second glob contains a regular expression that will match all minions with
-an ID matching saltmaster.* and specifies that for those minions, the salt.master
-state should be applied.
+The second expression is a regular expression that will match all minions
+with an ID matching ``saltmaster.*`` and specifies that for those minions, the
+salt.master state should be applied. 
+
+.. important::
+    Since version 2014.7.0, the default matcher (when one is not explicitly
+    defined as in the second expression in the above example) is the
+    :ref:`compound <targeting-compound>` matcher. Since this matcher parses
+    individual words in the expression, minion IDs containing spaces will not
+    match properly using this matcher. Therefore, if your target expression is
+    designed to match a minion ID containing spaces, it will be necessary to
+    specify a different match type (such as ``glob``). For example:
+
+    .. code-block:: yaml
+
+        base:
+          'test minion':
+            - match: glob
+            - foo
+            - bar
+            - baz
+
+A full table of match types available in the top file can be found :ref:`here
+<top-file-match-types>`.
+
+.. _reloading-modules:
 
 Reloading Modules
 -----------------
@@ -188,7 +212,7 @@ module requires the `pip`_ package for proper name and version parsing.
 
 In most of the common cases, Salt is clever enough to transparently reload the
 modules. For example, if you install a package, Salt reloads modules because
-some other module or state might require just that package which was installed.  
+some other module or state might require just that package which was installed.
 
 On some edge-cases salt might need to be told to reload the modules. Consider
 the following state file which we'll call ``pep8.sls``:
@@ -196,24 +220,24 @@ the following state file which we'll call ``pep8.sls``:
 .. code-block:: yaml
 
     python-pip:
-      cmd:
-        - run
+      cmd.run:
+        - name: |
+            easy_install --script-dir=/usr/bin -U pip
         - cwd: /
-        - name: easy_install --script-dir=/usr/bin -U pip
 
     pep8:
-      pip.installed
-      requires:
-        - cmd: python-pip
+      pip.installed:
+        - require:
+          - cmd: python-pip
 
 
-The above example installs `pip`_ using ``easy_install`` from `setuptools`_ and 
-installs `pep8`_ using :mod:`pip <salt.states.pip_state>`, which, as told 
+The above example installs `pip`_ using ``easy_install`` from `setuptools`_ and
+installs `pep8`_ using :mod:`pip <salt.states.pip_state>`, which, as told
 earlier, requires `pip`_ to be installed system-wide. Let's execute this state:
 
 .. code-block:: bash
 
-    salt-call state.sls pep8
+    salt-call state.apply pep8
 
 The execution output would be something like:
 
@@ -268,7 +292,7 @@ state executed correctly.
 
 So how do we solve this *edge-case*? ``reload_modules``!
 
-``reload_modules`` is a boolean option recognized by salt on **all** available 
+``reload_modules`` is a boolean option recognized by salt on **all** available
 states which forces salt to reload its modules once a given state finishes.
 
 The modified state file would now be:
@@ -276,23 +300,23 @@ The modified state file would now be:
 .. code-block:: yaml
 
     python-pip:
-      cmd:
-        - run
+      cmd.run:
+        - name: |
+            easy_install --script-dir=/usr/bin -U pip
         - cwd: /
-        - name: easy_install --script-dir=/usr/bin -U pip
         - reload_modules: true
 
     pep8:
-      pip.installed
-      requires:
-        - cmd: python-pip
+      pip.installed:
+        - require:
+          - cmd: python-pip
 
 
 Let's run it, once:
 
 .. code-block:: bash
 
-    salt-call state.sls pep8
+    salt-call state.apply pep8
 
 The output is:
 
@@ -318,4 +342,3 @@ The output is:
 .. _`pep8`: https://pypi.python.org/pypi/pep8
 .. _`setuptools`: https://pypi.python.org/pypi/setuptools
 .. _`runners`: /ref/runners
-

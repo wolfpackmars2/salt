@@ -2,16 +2,20 @@
 '''
 Manage the information in the hosts file
 '''
-from __future__ import absolute_import
 
-# Import python libs
+# Import Python libs
+from __future__ import absolute_import, print_function, unicode_literals
+import errno
 import os
 
 # Import salt libs
-import salt.utils
+import salt.utils.files
 import salt.utils.odict as odict
-from salt.ext.six.moves import range
-import salt.ext.six as six
+import salt.utils.stringutils
+
+# Import 3rd-party libs
+from salt.ext import six
+from salt.ext.six.moves import range  # pylint: disable=import-error,no-name-in-module,redefined-builtin
 
 
 # pylint: disable=C0103
@@ -19,37 +23,61 @@ def __get_hosts_filename():
     '''
     Return the path to the appropriate hosts file
     '''
-    # TODO: Investigate using  "%SystemRoot%\system32" for this
-    if salt.utils.is_windows():
-        return 'C:\\Windows\\System32\\drivers\\etc\\hosts'
+    try:
+        return __context__['hosts.__get_hosts_filename']
+    except KeyError:
+        __context__['hosts.__get_hosts_filename'] = \
+            __salt__['config.option']('hosts.file')
+        return __context__['hosts.__get_hosts_filename']
 
-    return __salt__['config.option']('hosts.file')
+
+def _get_or_create_hostfile():
+    '''
+    Wrapper of __get_hosts_filename but create host file if it
+    does not exist.
+    '''
+    hfn = __get_hosts_filename()
+    if hfn is None:
+        hfn = ''
+    if not os.path.exists(hfn):
+        with salt.utils.files.fopen(hfn, 'w'):
+            pass
+    return hfn
 
 
 def _list_hosts():
     '''
     Return the hosts found in the hosts file in as an OrderedDict
     '''
-    count = 0
-    hfn = __get_hosts_filename()
-    ret = odict.OrderedDict()
-    if not os.path.isfile(hfn):
+    try:
+        return __context__['hosts._list_hosts']
+    except KeyError:
+        count = 0
+        hfn = __get_hosts_filename()
+        ret = odict.OrderedDict()
+        try:
+            with salt.utils.files.fopen(hfn) as ifile:
+                for line in ifile:
+                    line = salt.utils.stringutils.to_unicode(line).strip()
+                    if not line:
+                        continue
+                    if line.startswith('#'):
+                        ret.setdefault('comment-{0}'.format(count), []).append(line)
+                        count += 1
+                        continue
+                    if '#' in line:
+                        line = line[:line.index('#')].strip()
+                    comps = line.split()
+                    ip = comps.pop(0)
+                    ret.setdefault(ip, []).extend(comps)
+        except (IOError, OSError) as exc:
+            salt.utils.files.process_read_exception(exc, hfn, ignore=errno.ENOENT)
+            # Don't set __context__ since we weren't able to read from the
+            # hosts file.
+            return ret
+
+        __context__['hosts._list_hosts'] = ret
         return ret
-    with salt.utils.fopen(hfn) as ifile:
-        for line in ifile:
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith('#'):
-                ret.setdefault('comment-{0}'.format(count), []).extend(line)
-                count += 1
-                continue
-            if '#' in line:
-                line = line[:line.index('#')].strip()
-            comps = line.split()
-            ip = comps.pop(0)
-            ret.setdefault(ip, []).extend(comps)
-    return ret
 
 
 def list_hosts():
@@ -93,6 +121,10 @@ def get_alias(ip):
     '''
     Return the list of aliases associated with an ip
 
+    Aliases (host names) are returned in the order in which they
+    appear in the hosts file.  If there are no aliases associated with
+    the IP, an empty list is returned.
+
     CLI Example:
 
     .. code-block:: bash
@@ -116,7 +148,10 @@ def has_pair(ip, alias):
         salt '*' hosts.has_pair <ip> <alias>
     '''
     hosts = _list_hosts()
-    return ip in hosts and alias in hosts[ip]
+    try:
+        return alias in hosts[ip]
+    except KeyError:
+        return False
 
 
 def set_host(ip, alias):
@@ -124,37 +159,55 @@ def set_host(ip, alias):
     Set the host entry in the hosts file for the given ip, this will overwrite
     any previous entry for the given ip
 
+    .. versionchanged:: 2016.3.0
+        If ``alias`` does not include any host names (it is the empty
+        string or contains only whitespace), all entries for the given
+        IP address are removed.
+
     CLI Example:
 
     .. code-block:: bash
 
         salt '*' hosts.set_host <ip> <alias>
     '''
-    hfn = __get_hosts_filename()
+    hfn = _get_or_create_hostfile()
     ovr = False
     if not os.path.isfile(hfn):
         return False
-    lines = salt.utils.fopen(hfn).readlines()
-    for ind, line in enumerate(lines):
-        tmpline = line.strip()
+
+    # Make sure future calls to _list_hosts() will re-read the file
+    __context__.pop('hosts._list_hosts', None)
+
+    line_to_add = salt.utils.stringutils.to_bytes(
+        ip + '\t\t' + alias + os.linesep
+    )
+    # support removing a host entry by providing an empty string
+    if not alias.strip():
+        line_to_add = b''
+
+    with salt.utils.files.fopen(hfn, 'rb') as fp_:
+        lines = fp_.readlines()
+    for ind, _ in enumerate(lines):
+        tmpline = lines[ind].strip()
         if not tmpline:
             continue
-        if tmpline.startswith('#'):
+        if tmpline.startswith(b'#'):
             continue
         comps = tmpline.split()
-        if comps[0] == ip:
+        if comps[0] == salt.utils.stringutils.to_bytes(ip):
             if not ovr:
-                lines[ind] = ip + '\t\t' + alias + '\n'
+                lines[ind] = line_to_add
                 ovr = True
             else:  # remove other entries
-                lines[ind] = ''
+                lines[ind] = b''
+    linesep_bytes = salt.utils.stringutils.to_bytes(os.linesep)
     if not ovr:
         # make sure there is a newline
-        if lines and not lines[-1].endswith(('\n', '\r')):
-            lines[-1] = '{0}\n'.format(lines[-1])
-        line = ip + '\t\t' + alias + '\n'
+        if lines and not lines[-1].endswith(linesep_bytes):
+            lines[-1] += linesep_bytes
+        line = line_to_add
         lines.append(line)
-    with salt.utils.fopen(hfn, 'w+') as ofile:
+    with salt.utils.files.fopen(hfn, 'wb') as ofile:
         ofile.writelines(lines)
     return True
 
@@ -171,28 +224,33 @@ def rm_host(ip, alias):
     '''
     if not has_pair(ip, alias):
         return True
-    hfn = __get_hosts_filename()
-    lines = salt.utils.fopen(hfn).readlines()
-    for ind in range(len(lines)):
+    # Make sure future calls to _list_hosts() will re-read the file
+    __context__.pop('hosts._list_hosts', None)
+    hfn = _get_or_create_hostfile()
+    with salt.utils.files.fopen(hfn, 'rb') as fp_:
+        lines = fp_.readlines()
+    for ind, _ in enumerate(lines):
         tmpline = lines[ind].strip()
         if not tmpline:
             continue
-        if tmpline.startswith('#'):
+        if tmpline.startswith(b'#'):
             continue
         comps = tmpline.split()
-        if comps[0] == ip:
-            newline = '{0}\t'.format(comps[0])
+        b_ip = salt.utils.stringutils.to_bytes(ip)
+        b_alias = salt.utils.stringutils.to_bytes(alias)
+        if comps[0] == b_ip:
+            newline = comps[0] + b'\t\t'
             for existing in comps[1:]:
-                if existing == alias:
+                if existing == b_alias:
                     continue
-                newline += '\t{0}'.format(existing)
-            if newline.strip() == ip:
+                newline += existing + b' '
+            if newline.strip() == b_ip:
                 # No aliases exist for the line, make it empty
-                lines[ind] = ''
+                lines[ind] = b''
             else:
                 # Only an alias was removed
-                lines[ind] = '{0}\n'.format(newline)
-    with salt.utils.fopen(hfn, 'w+') as ofile:
+                lines[ind] = newline + salt.utils.stringutils.to_bytes(os.linesep)
+    with salt.utils.files.fopen(hfn, 'wb') as ofile:
         ofile.writelines(lines)
     return True
 
@@ -208,7 +266,7 @@ def add_host(ip, alias):
 
         salt '*' hosts.add_host <ip> <alias>
     '''
-    hfn = __get_hosts_filename()
+    hfn = _get_or_create_hostfile()
     if not os.path.isfile(hfn):
         return False
 
@@ -216,8 +274,12 @@ def add_host(ip, alias):
         return True
 
     hosts = _list_hosts()
+
+    # Make sure future calls to _list_hosts() will re-read the file
+    __context__.pop('hosts._list_hosts', None)
+
     inserted = False
-    for i, h in hosts.items():
+    for i, h in six.iteritems(hosts):
         for j in range(len(h)):
             if h[j].startswith('#') and i == ip:
                 h.insert(j, alias)
@@ -237,14 +299,16 @@ def _write_hosts(hosts):
             else:
                 line = '{0}\t\t{1}'.format(
                     ip,
-                    '\t\t'.join(aliases)
+                    ' '.join(aliases)
                     )
         lines.append(line)
 
-    hfn = __get_hosts_filename()
-    with salt.utils.fopen(hfn, 'w+') as ofile:
-        ofile.write(
-            '\n'.join(
-                [l.strip() for l in lines if l.strip()]
-            )
-        )
+    hfn = _get_or_create_hostfile()
+    with salt.utils.files.fopen(hfn, 'w+') as ofile:
+        for line in lines:
+            if line.strip():
+                # /etc/hosts needs to end with a newline so that some utils
+                # that read it do not break
+                ofile.write(salt.utils.stringutils.to_str(
+                    line.strip() + six.text_type(os.linesep)
+                ))

@@ -1,3 +1,5 @@
+.. _compiler-ordering:
+
 =====================================
 Understanding State Compiler Ordering
 =====================================
@@ -57,16 +59,17 @@ As an example, a state written thusly:
 .. code-block:: yaml
 
     apache:
-      pkg:
-        - installed
-      service:
-        - running
+      pkg.installed:
+        - name: httpd
+      service.running:
+        - name: httpd
         - watch:
-          - file: /etc/httpd/conf.d/httpd.conf
+          - file: apache_conf
           - pkg: apache
-    /etc/httpd/conf.d/httpd.conf:
-      file:
-        - managed
+
+    apache_conf:
+      file.managed:
+        - name: /etc/httpd/conf.d/httpd.conf
         - source: salt://apache/httpd.conf
 
 Will have High Data which looks like this represented in json:
@@ -76,41 +79,50 @@ Will have High Data which looks like this represented in json:
     {
         "apache": {
             "pkg": [
-                "installed", 
+                {
+                    "name": "httpd"
+                },
+                "installed",
                 {
                     "order": 10000
                 }
-            ], 
+            ],
             "service": [
-                "running", 
+                {
+                    "name": "httpd"
+                },
                 {
                     "watch": [
                         {
-                            "file": "/etc/httpd/conf.d/httpd.conf"
-                        }, 
+                            "file": "apache_conf"
+                        },
                         {
                             "pkg": "apache"
                         }
                     ]
-                }, 
+                },
+                "running",
                 {
                     "order": 10001
                 }
-            ], 
-            "__sls__": "apache", 
+            ],
+            "__sls__": "blah",
             "__env__": "base"
-        }, 
-        "/etc/httpd/conf.d/httpd.conf": {
+        },
+        "apache_conf": {
             "file": [
-                "managed", 
+                {
+                    "name": "/etc/httpd/conf.d/httpd.conf"
+                },
                 {
                     "source": "salt://apache/httpd.conf"
-                }, 
+                },
+                "managed",
                 {
                     "order": 10002
                 }
-            ], 
-            "__sls__": "apache", 
+            ],
+            "__sls__": "blah",
             "__env__": "base"
         }
     }
@@ -121,43 +133,42 @@ The subsequent Low Data will look like this:
 
     [
         {
-            "name": "apache", 
-            "state": "pkg", 
-            "__id__": "apache", 
-            "fun": "installed", 
-            "__env__": "base", 
-            "__sls__": "apache", 
+            "name": "httpd",
+            "state": "pkg",
+            "__id__": "apache",
+            "fun": "installed",
+            "__env__": "base",
+            "__sls__": "blah",
             "order": 10000
-        }, 
+        },
         {
-            "name": "apache", 
+            "name": "httpd",
             "watch": [
                 {
-                    "file": "/etc/httpd/conf.d/httpd.conf"
-                }, 
+                    "file": "apache_conf"
+                },
                 {
                     "pkg": "apache"
                 }
-            ], 
-            "state": "service", 
-            "__id__": "apache", 
-            "fun": "running", 
-            "__env__": "base", 
-            "__sls__": "apache", 
+            ],
+            "state": "service",
+            "__id__": "apache",
+            "fun": "running",
+            "__env__": "base",
+            "__sls__": "blah",
             "order": 10001
-        }, 
+        },
         {
-            "name": "/etc/httpd/conf.d/httpd.conf", 
-            "source": "salt://apache/httpd.conf", 
-            "state": "file", 
-            "__id__": "/etc/httpd/conf.d/httpd.conf", 
-            "fun": "managed", 
-            "__env__": "base", 
-            "__sls__": "apache", 
+            "name": "/etc/httpd/conf.d/httpd.conf",
+            "source": "salt://apache/httpd.conf",
+            "state": "file",
+            "__id__": "apache_conf",
+            "fun": "managed",
+            "__env__": "base",
+            "__sls__": "blah",
             "order": 10002
         }
     ]
-
 
 This tutorial discusses the Low Data evaluation and the state runtime.
 
@@ -173,7 +184,7 @@ Definition Order
 .. note::
 
     The Definition Order system can be disabled by turning the option
-    `state_auto_order` to `False` in the master configuration file.
+    ``state_auto_order`` to ``False`` in the master configuration file.
 
 The top level of ordering is the `Definition Order`. The `Definition Order`
 is the order in which states are defined in salt formulas. This is very
@@ -217,7 +228,7 @@ In the following case:
     include:
       - qux
 
-In the above case if `state.sls foo` were called then the formulas will be
+In the above case if ``state.apply foo`` were called then the formulas will be
 loaded in the following order:
 
 1. quo
@@ -230,20 +241,20 @@ The `order` Flag
 ----------------
 
 The `Definition Order` happens transparently in the background, but the
-ordering can be explicitly overridden using the `order` flag in states:
+ordering can be explicitly overridden using the ``order`` flag in states:
 
 .. code-block:: yaml
 
     apache:
-      pkg:
-        - installed
+      pkg.installed:
+        - name: httpd
         - order: 1
 
 This order flag will over ride the definition order, this makes it very
 simple to create states that are always executed first, last or in specific
 stages, a great example is defining a number of package repositories that
 need to be set up before anything else, or final checks that need to be
-run at the end of a state run by using `order: last` or `order: -1`.
+run at the end of a state run by using ``order: last`` or ``order: -1``.
 
 When the order flag is explicitly set the `Definition Order` system will omit
 setting an order for that state and directly use the order flag defined.
@@ -266,7 +277,7 @@ to ensure that every execution still happens in a finite order.
 
 .. note::
 
-    If running with `state_auto_order: False` the `order` key is not
+    If running with ``state_auto_order: False`` the ``order`` key is not
     set automatically, since the Lexicographical order can be derived
     from other keys.
 
@@ -295,7 +306,7 @@ at first as it creates a linear dependency evaluation sequence.
 The "Low Data" is an ordered list or dictionaries, the state runtime evaluates
 each dictionary in the order in which they are arranged in the list. When
 evaluating a single dictionary it is checked for requisites, requisites are
-evaluated in order, `require` then `watch` then `prereq`.
+evaluated in order, ``require`` then ``watch`` then ``prereq``.
 
 .. note::
 
@@ -337,7 +348,7 @@ states are written using requisites for all associations since requisites
 create clean, traceable dependency trails and make for the most portable
 formulas. To accomplish something similar to how classical imperative
 systems function all requisites can be omitted and the ``failhard`` option
-then set to `True` in the master configuration, this will stop all state runs at
+then set to ``True`` in the master configuration, this will stop all state runs at
 the first instance of a failure.
 
 In the end, using requisites creates very tight and fine grained states,

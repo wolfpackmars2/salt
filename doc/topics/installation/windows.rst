@@ -1,296 +1,507 @@
+.. _windows:
+
 =======
 Windows
 =======
 
-Salt has full support for running the Salt Minion on Windows.
-
-There are no plans for the foreseeable future to develop a Salt Master on
-Windows. For now you must run your Salt Master on a supported operating system
-to control your Salt Minions on Windows.
+Salt has full support for running the Salt minion on Windows. You must connect
+Windows Salt minions to a Salt master on a supported operating system to
+control your Salt Minions.
 
 Many of the standard Salt modules have been ported to work on Windows and many
-of the Salt States currently work on Windows, as well.
+of the Salt States currently work on Windows as well.
 
+.. _windows-installer:
 
-Windows Installer
-=================
+Installation from the Official SaltStack Repository
+===================================================
 
-Salt Minion Windows installers can be found here. The output of `md5sum <salt
-minion exe>` should match the contents of the corresponding md5 file.
+**Latest stable build from the selected branch**:
+|windownload|
 
-.. admonition:: Download here
+The output of ``md5sum <salt minion exe>`` should match the contents of the
+corresponding md5 file.
 
-    * 2014.7.0
-    * `Salt-Minion-2014.7.0-x86-Setup.exe <http://docs.saltstack.com/downloads/Salt-Minion-2014.7.0-x86-Setup.exe>`__ | `md5 <http://docs.saltstack.com/downloads/Salt-Minion-2014.7.0-x86-Setup.exe.md5>`__
-    * `Salt-Minion-2014.7.0-AMD64-Setup.exe <http://docs.saltstack.com/downloads/Salt-Minion-2014.7.0-AMD64-Setup.exe>`__ | `md5 <http://docs.saltstack.com/downloads/Salt-Minion-2014.7.0-AMD64-Setup.exe.md5>`__
+`Earlier builds from supported branches <https://repo.saltstack.com/windows/>`__
 
-    * 2014.1.13
-    * `Salt-Minion-2014.1.13-x86-Setup.exe <http://docs.saltstack.com/downloads/Salt-Minion-2014.1.13-x86-Setup.exe>`__ | `md5 <http://docs.saltstack.com/downloads/Salt-Minion-2014.1.13-x86-Setup.exe.md5>`__
-    * `Salt-Minion-2014.1.13-AMD64-Setup.exe <http://docs.saltstack.com/downloads/Salt-Minion-2014.1.13-AMD64-Setup.exe>`__ | `md5 <http://docs.saltstack.com/downloads/Salt-Minion-2014.1.13-AMD64-Setup.exe.md5>`__
-
-    * 2014.1.11
-    * `Salt-Minion-2014.1.11-win32-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.11-win32-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.11-win32-Setup.exe.md5>`__
-    * `Salt-Minion-2014.1.11-AMD64-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.11-AMD64-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.11-AMD64-Setup.exe.md5>`__
-
-    * 2014.1.10
-    * `Salt-Minion-2014.1.10-win32-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.10-win32-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.10-win32-Setup.exe.md5>`__
-    * `Salt-Minion-2014.1.10-AMD64-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.10-AMD64-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.10-AMD64-Setup.exe.md5>`__
-
-    * 2014.1.7
-    * `Salt-Minion-2014.1.7-win32-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.7-win32-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.7-win32-Setup.exe.md5>`__
-    * `Salt-Minion-2014.1.7-AMD64-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.7-AMD64-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.7-AMD64-Setup.exe.md5>`__
-
-    * 2014.1.5
-    * `Salt-Minion-2014.1.5-win32-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.5-win32-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.5-win32-Setup.exe.md5>`__
-    * `Salt-Minion-2014.1.5-AMD64-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.5-AMD64-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.5-AMD64-Setup.exe.md5>`__
-
-    * 2014.1.4
-    * `Salt-Minion-2014.1.4-win32-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.4-win32-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.4-win32-Setup.exe.md5>`__
-    * `Salt-Minion-2014.1.4-AMD64-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.4-AMD64-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.4-AMD64-Setup.exe.md5>`__
-
-    * 2014.1.3-1  (packaging bugfix)
-    * `Salt-Minion-2014.1.3-1-win32-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.3-1-win32-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.3-1-win32-Setup.exe.md5>`__
-    * `Salt-Minion-2014.1.3-1-AMD64-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.3-1-AMD64-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.3-1-AMD64-Setup.exe.md5>`__
-
-    * 2014.1.3
-    * `Salt-Minion-2014.1.3-win32-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.3-win32-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.3-win32-Setup.exe.md5>`__
-    * `Salt-Minion-2014.1.3-AMD64-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.3-AMD64-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.3-AMD64-Setup.exe.md5>`__
-
-    * 2014.1.1
-    * `Salt-Minion-2014.1.1-win32-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.1-win32-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.1-win32-Setup.exe.md5>`__
-    * `Salt-Minion-2014.1.1-AMD64-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.1-AMD64-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.1-AMD64-Setup.exe.md5>`__
-
-
-    * 2014.1.0
-    * `Salt-Minion-2014.1.0-win32-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.0-win32-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.0-win32-Setup.exe.md5>`__
-    * `Salt-Minion-2014.1.0-AMD64-Setup.exe <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.0-AMD64-Setup.exe>`__ | `md5 <https://docs.saltstack.com/downloads/Salt-Minion-2014.1.0-AMD64-Setup.exe.md5>`__
-
-    * 0.17.5-2 (bugfix release)
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.5-2-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.5-2-AMD64-Setup.exe
-
-    * 0.17.5
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.5-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.5-AMD64-Setup.exe
-
-    * 0.17.4
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.4-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.4-AMD64-Setup.exe
-
-    * 0.17.2
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.2-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.2-AMD64-Setup.exe
-
-    * 0.17.1.1 - Windows Installer bugfix release
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.1.1-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.1.1-AMD64-Setup.exe
-
-    * 0.17.1
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.1-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.1-AMD64-Setup.exe
-
-    * 0.17.0
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.0-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.17.0-AMD64-Setup.exe
-
-    * 0.16.3
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.16.3-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.16.3-AMD64-Setup.exe
-
-    * 0.16.2
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.16.2-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.16.2-AMD64-Setup.exe
-
-    * 0.16.0
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.16.0-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.16.0-AMD64-Setup.exe
-
-    * 0.15.3
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.15.3-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.15.3-AMD64-Setup.exe
-
-    * 0.14.1
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.14.1-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.14.1-AMD64-Setup.exe
-
-    * 0.14.0
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.14.0-win32-Setup.exe
-    * https://docs.saltstack.com/downloads/Salt-Minion-0.14.0-AMD64-Setup.exe
+`Archived builds from unsupported branches <https://repo.saltstack.com/windows/archive/>`__
 
 .. note::
 
-    The executables above will install all dependencies that the Salt minion
+    The installation executable installs dependencies that the Salt minion
     requires.
 
 The 64bit installer has been tested on Windows 7 64bit and Windows Server
-2008R2 64bit. The 32bit installer has been tested on Windows 2003 Server 32bit.
+2008R2 64bit. The 32bit installer has been tested on Windows 2008 Server 32bit.
 Please file a bug report on our GitHub repo if issues for other platforms are
 found.
 
-The installer asks for 2 bits of information; the master hostname and the
-minion name. The installer will update the minion config with these options and
-then start the minion.
+There are installers available for Python 2 and Python 3.
 
-The `salt-minion` service will appear in the Windows Service Manager and can be
-started and stopped there or with the command line program `sc` like any other
-Windows service.
+The installer will detect previous installations of Salt and ask if you would
+like to remove them. Clicking OK will remove the Salt binaries and related files
+but leave any existing config, cache, and PKI information.
 
-If the minion won't start, try installing the Microsoft Visual C++ 2008 x64 SP1
-redistributable. Allow all Windows updates to run salt-minion smoothly.
+Salt Minion Installation
+========================
+
+If the system is missing the appropriate version of the Visual C++
+Redistributable (vcredist) the user will be prompted to install it. Click ``OK``
+to install the vcredist. Click ``Cancel`` to abort the installation without
+making modifications to the system.
+
+If Salt is already installed on the system the user will be prompted to remove
+the previous installation. Click ``OK`` to uninstall Salt without removing the
+configuration, PKI information, or cached files. Click ``Cancel`` to abort the
+installation before making any modifications to the system.
+
+After the Welcome and the License Agreement, the installer asks for two bits of
+information to configure the minion; the master hostname and the minion name.
+The installer will update the minion config with these options.
+
+If the installer finds an existing minion config file, these fields will be
+populated with values from the existing config, but they will be grayed out.
+There will also be a checkbox to use the existing config. If you continue, the
+existing config will be used. If the checkbox is unchecked, default values are
+displayed and can be changed. If you continue, the existing config file in
+``c:\salt\conf`` will be removed along with the ``c:\salt\conf\minion.d``
+directory. The values entered will be used with the default config.
+
+The final page allows you to start the minion service and optionally change its
+startup type. By default, the minion is set to ``Automatic``. You can change the
+minion start type to ``Automatic (Delayed Start)`` by checking the 'Delayed
+Start' checkbox.
+
+.. note::
+    Highstates that require a reboot may fail after reboot because salt
+    continues the highstate before Windows has finished the booting process.
+    This can be fixed by changing the startup type to 'Automatic (Delayed
+    Start)'. The drawback is that it may increase the time it takes for the
+    'salt-minion' service to actually start.
+
+The ``salt-minion`` service will appear in the Windows Service Manager and can
+be managed there or from the command line like any other Windows service.
+
+.. code-block:: bat
+
+    sc start salt-minion
+    net start salt-minion
+
+Installation Prerequisites
+--------------------------
+
+Most Salt functionality should work just fine right out of the box. A few Salt
+modules rely on PowerShell. The minimum version of PowerShell required for Salt
+is version 3. If you intend to work with DSC then Powershell version 5 is the
+minimum.
+
+.. _windows-installer-options:
+
+Silent Installer Options
+========================
+
+The installer can be run silently by providing the ``/S`` option at the command
+line. The installer also accepts the following options for configuring the Salt
+Minion silently:
+
+=========================  =====================================================
+Option                     Description
+=========================  =====================================================
+``/master=``               A string value to set the IP address or hostname of
+                           the master. Default value is 'salt'. You can pass a
+                           single master or a comma-separated list of masters.
+                           Setting the master will cause the installer to use
+                           the default config or a custom config if defined.
+``/minion-name=``          A string value to set the minion name. Default value
+                           is 'hostname'. Setting the minion name causes the
+                           installer to use the default config or a custom
+                           config if defined.
+``/start-minion=``         Either a 1 or 0. '1' will start the salt-minion
+                           service, '0' will not. Default is to start the
+                           service after installation.
+``/start-minion-delayed``  Set the minion start type to
+                           ``Automatic (Delayed Start)``.
+``/default-config``        Overwrite the existing config if present with the
+                           default config for salt. Default is to use the
+                           existing config if present. If ``/master`` and/or
+                           ``/minion-name`` is passed, those values will be used
+                           to update the new default config.
+``/custom-config=``        A string value specifying the name of a custom config
+                           file in the same path as the installer or the full
+                           path to a custom config file. If ``/master`` and/or
+                           ``/minion-name`` is passed, those values will be used
+                           to update the new custom config.
+``/S``                     Runs the installation silently. Uses the above
+                           settings or the defaults.
+``/?``                     Displays command line help.
+=========================  =====================================================
+
+.. note::
+    ``/start-service`` has been deprecated but will continue to function as
+    expected for the time being.
+
+.. note::
+    ``/default-config`` and ``/custom-config=`` will backup an existing config
+    if found. A timestamp and a ``.bak`` extension will be added. That includes
+    the ``minion`` file and the ``minion.d`` directory.
+
+Here are some examples of using the silent installer:
+
+.. code-block:: bat
+
+    # Install the Salt Minion
+    # Configure the minion and start the service
+
+    Salt-Minion-2017.7.1-Py2-AMD64-Setup.exe /S /master=yoursaltmaster /minion-name=yourminionname
+
+.. code-block:: bat
+
+    # Install the Salt Minion
+    # Configure the minion but don't start the minion service
+
+    Salt-Minion-2017.7.1-Py3-AMD64-Setup.exe /S /master=yoursaltmaster /minion-name=yourminionname /start-minion=0
+
+.. code-block:: bat
+
+    # Install the Salt Minion
+    # Configure the minion using a custom config and configuring multimaster
+
+    Salt-Minion-2017.7.1-Py3-AMD64-Setup.exe /S /custom-config=windows_minion /master=prod_master1,prod_master2
 
 
-Silent Installer option
-=======================
+Running the Salt Minion on Windows as an Unprivileged User
+==========================================================
 
-The installer can be run silently by providing the `/S` option at the command
-line. The options `/master` and `/minion-name` allow for configuring the master
-hostname and minion name, respectively. Here's an example of using the silent
-installer:
+Notes:
 
-.. code-block:: bash
+- These instructions were tested with Windows Server 2008 R2
+- They are generalizable to any version of Windows that supports a salt-minion
 
-    Salt-Minion-0.17.0-Setup-amd64.exe /S /master=yoursaltmaster /minion-name=yourminionname
+Create the Unprivileged User that the Salt Minion will Run As
+-------------------------------------------------------------
 
+1. Click ``Start`` > ``Control Panel`` > ``User Accounts``.
 
-Setting up a Windows build environment
-======================================
+2. Click ``Add or remove user accounts``.
 
-1.  Install the Microsoft Visual C++ 2008 SP1 Redistributable, `vcredist_x86`_
-    or `vcredist_x64`_.
+3. Click ``Create new account``.
 
-2.  Install `msysgit`_
+4. Enter ``salt-user`` (or a name of your preference) in the ``New account name`` field.
 
-3.  Clone the Salt git repository from GitHub
-    
-    .. code-block:: bash
+5. Select the ``Standard user`` radio button.
 
-        git clone git://github.com/saltstack/salt.git
+6. Click the ``Create Account`` button.
 
-4.  Install the latest point release of `Python 2.7`_ for the architecture you
-    wish to target
+7. Click on the newly created user account.
 
-5.  Add C:\\Python27 and C:\\Python27\\Scripts to your system path
+8. Click the ``Create a password`` link.
 
-6.  Download and run the Setuptools bootstrap - `ez_setup.py`_
+9. In the ``New password`` and ``Confirm new password`` fields, provide
+   a password (e.g "SuperSecretMinionPassword4Me!").
 
-    .. code-block:: bash
+10. In the ``Type a password hint`` field, provide appropriate text (e.g. "My Salt Password").
 
-        python ez_setup.py
-    
-7.  Install Pip
+11. Click the ``Create password`` button.
 
-    .. code-block:: bash
-        
-        easy_install pip
-
-8.  Install the latest point release of `OpenSSL for Windows`_
-
-    #.  During setup, choose first option to install in Windows system
-        directory
-
-9.  Install the latest point release of `M2Crypto`_
-
-    #.  In general, be sure to download installers targeted at py2.7 for your
-        chosen architecture
-
-10. Install the latest point release of `pycrypto`_
-
-11. Install the latest point release of `pywin32`_
-
-12. Install the latest point release of `Cython`_
-
-13. Install the latest point release of `jinja2`_
-
-14. Install the latest point release of `msgpack`_
-
-15. Install psutil
-
-    .. code-block:: bash
-
-        easy_install psutil
-
-16. Install pyzmq
-
-    .. code-block:: bash
-
-        easy_install pyzmq
-        
-17. Install PyYAML
-
-    .. code-block:: bash
-
-        easy_install pyyaml
-        
-18. Install bbfreeze
-
-    .. code-block:: bash
-
-        easy_install bbfreeze
-
-19. Install wmi 
-
-    .. code-block:: bash
-
-        pip install wmi
-
-20. Install esky 
-
-    .. code-block:: bash
-
-        pip install esky
-
-21. Install Salt
-
-    .. code-block:: bash
-
-        cd salt
-        python setup.py install
-
-22. Build a frozen binary distribution of Salt
-
-    .. code-block:: bash
-
-            python setup.py bdist_esky
-
-A zip file has been created in the ``dist/`` folder, containing a frozen copy
-of Python and the dependency libraries, along with Windows executables for each
-of the Salt scripts.
+12. Close the ``Change an Account`` window.
 
 
-Building the installer
-======================
+Add the New User to the Access Control List for the Salt Folder
+---------------------------------------------------------------
 
-The Salt Windows installer is built with the open-source NSIS compiler. The
-source for the installer is found in the pkg directory of the Salt repo here:
-:blob:`pkg/windows/installer/Salt-Minion-Setup.nsi`. To create the installer,
-extract the frozen archive from ``dist/`` into ``pkg/windows/buildenv/`` and
-run NSIS.
+1. In a File Explorer window, browse to the path where Salt is installed (the default path is ``C:\Salt``).
 
-The NSIS installer can be found here: http://nsis.sourceforge.net/Main_Page
+2. Right-click on the ``Salt`` folder and select ``Properties``.
 
+3. Click on the ``Security`` tab.
+
+4. Click the ``Edit`` button.
+
+5. Click the ``Add`` button.
+
+6. Type the name of your designated Salt user and click the ``OK`` button.
+
+7. Check the box to ``Allow`` the ``Modify`` permission.
+
+8. Click the ``OK`` button.
+
+9. Click the ``OK`` button to close the ``Salt Properties`` window.
+
+
+Update the Windows Service User for the ``salt-minion`` Service
+---------------------------------------------------------------
+
+1. Click ``Start`` > ``Administrative Tools`` > ``Services``.
+
+2. In the Services list, right-click on ``salt-minion`` and select ``Properties``.
+
+3. Click the ``Log On`` tab.
+
+4. Click the ``This account`` radio button.
+
+5. Provide the account credentials created in section A.
+
+6. Click the ``OK`` button.
+
+7. Click the ``OK`` button to the prompt confirming that the user ``has been
+   granted the Log On As A Service right``.
+
+8. Click the ``OK`` button to the prompt confirming that ``The new logon name
+   will not take effect until you stop and restart the service``.
+
+9. Right-Click on ``salt-minion`` and select ``Stop``.
+
+10. Right-Click on ``salt-minion`` and select ``Start``.
+
+.. _building-developing-windows:
+
+Building and Developing on Windows
+==================================
+
+This document will explain how to set up a development environment for Salt on
+Windows. The development environment allows you to work with the source code to
+customize or fix bugs. It will also allow you to build your own installation.
+
+There are several scripts to automate creating a Windows installer as well as
+setting up an environment that facilitates developing and troubleshooting Salt
+code. They are located in the ``pkg\windows`` directory in the Salt repo
+`(here) <https://github.com/saltstack/salt/tree/develop/pkg/windows>`_.
+
+Scripts:
+--------
+
+===================  ===========
+Script               Description
+===================  ===========
+``build_env_2.ps1``  A PowerShell script that sets up a Python 2 build
+                     environment
+``build_env_3.ps1``  A PowerShell script that sets up a Python 3 build
+                     environment
+``build_pkg.bat``    A batch file that builds a Windows installer based on the
+                     contents of the ``C:\Python27`` directory
+``build.bat``        A batch file that fully automates the building of the
+                     Windows installer using the above two scripts
+===================  ===========
+
+.. note::
+    The ``build.bat`` and ``build_pkg.bat`` scripts both accept a parameter to
+    specify the version of Salt that will be displayed in the Windows installer.
+    If no version is passed, the version will be determined using git.
+
+    Both scripts also accept an additional parameter to specify the version of
+    Python to use. The default is 2.
+
+Prerequisite Software
+---------------------
+
+The only prerequisite is `Git for Windows <https://git-scm.com/download/win/>`_.
+
+.. _create-build-environment:
+
+Create a Build Environment
+--------------------------
+
+1. Working Directory
+^^^^^^^^^^^^^^^^^^^^
+
+Create a ``Salt-Dev`` directory on the root of ``C:``. This will be our working
+directory. Navigate to ``Salt-Dev`` and clone the
+`Salt <https://github.com/saltstack/salt/>`_ repo from GitHub.
+
+Open a command line and type:
+
+.. code-block:: bat
+
+    cd \
+    md Salt-Dev
+    cd Salt-Dev
+    git clone https://github.com/saltstack/salt
+
+Go into the ``salt`` directory and checkout the version of salt to work with
+(2016.3 or higher).
+
+.. code-block:: bat
+
+    cd salt
+    git checkout 2017.7.2
+
+2. Setup the Python Environment
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Navigate to the ``pkg\windows`` directory and execute the **build_env.ps1**
+PowerShell script.
+
+.. code-block:: bat
+
+    cd pkg\windows
+    powershell -file build_env_2.ps1
+
+.. note::
+    You can also do this from Explorer by navigating to the ``pkg\windows``
+    directory, right clicking the **build_env_2.ps1** powershell script and
+    selecting **Run with PowerShell**
+
+This will download and install Python 2 with all the dependencies needed to
+develop and build Salt.
+
+.. note::
+    If you get an error or the script fails to run you may need to change the
+    execution policy. Open a powershell window and type the following command:
+
+.. code-block:: powershell
+
+    Set-ExecutionPolicy RemoteSigned
+
+3. Salt in Editable Mode
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Editable mode allows you to more easily modify and test the source code. For
+more information see the `Pip documentation
+<https://pip.pypa.io/en/stable/reference/pip_install/#editable-installs>`_.
+
+Navigate to the root of the ``salt`` directory and install Salt in editable mode
+with ``pip``
+
+.. code-block:: bat
+
+    cd \Salt-Dev\salt
+    pip install -e .
+
+.. note::
+    The ``.`` is important
+
+.. note::
+    If ``pip`` is not recognized, you may need to restart your shell to get the
+    updated path
+
+.. note::
+    If ``pip`` is still not recognized make sure that the Python Scripts folder
+    is in the System ``%PATH%``. (``C:\Python2\Scripts``)
+
+4. Setup Salt Configuration
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Salt requires a minion configuration file and a few other directories. The
+default config file is named ``minion`` located in ``C:\salt\conf``. The
+easiest way to set this up is to copy the contents of the
+``salt\pkg\windows\buildenv`` directory to ``C:\salt``.
+
+.. code-block:: bat
+
+    cd \
+    md salt
+    xcopy /s /e \Salt-Dev\salt\pkg\windows\buildenv\* \salt\
+
+Now go into the ``C:\salt\conf`` directory and edit the minion config file named
+``minion`` (no extension). You need to configure the master and id parameters in
+this file. Edit the following lines:
+
+.. code-block:: bat
+
+    master: <ip or name of your master>
+    id: <name of your minion>
+
+.. _create-windows-installer:
+
+Create a Windows Installer
+==========================
+
+To create a Windows installer, follow steps 1 and 2 from
+:ref:`Create a Build Environment <create-build-environment>` above. Then proceed
+to 3 below:
+
+3. Install Salt
+---------------
+
+To create the installer for Window we install Salt using Python instead of pip.
+Navigate to the root ``salt`` directory and install Salt.
+
+.. code-block:: bat
+
+    cd \Salt-Dev\salt
+    python setup.py install
+
+4. Create the Windows Installer
+-------------------------------
+
+Navigate to the ``pkg\windows`` directory and run the ``build_pkg.bat``
+with the build version (2017.7.2) and the Python version as parameters.
+
+.. code-block:: bat
+
+    cd pkg\windows
+    build_pkg.bat 2017.7.2 2
+                  ^^^^^^^^ ^
+                      |    |
+    # build version --     |
+    # python version ------
+
+.. note::
+    If no version is passed, the ``build_pkg.bat`` will guess the version number
+    using git. If the python version is not passed, the default is 2.
+
+.. _create-windows-installer-easy:
+
+Creating a Windows Installer: Alternate Method (Easier)
+=======================================================
+
+Clone the `Salt <https://github.com/saltstack/salt/>`_ repo from GitHub into the
+directory of your choice. We're going to use ``Salt-Dev``.
+
+.. code-block:: bat
+
+    cd \
+    md Salt-Dev
+    cd Salt-Dev
+    git clone https://github.com/saltstack/salt
+
+Go into the ``salt`` directory and checkout the version of Salt you want to
+build.
+
+.. code-block:: bat
+
+    cd salt
+    git checkout 2017.7.2
+
+Then navigate to ``pkg\windows`` and run the ``build.bat`` script with the
+version you're building.
+
+.. code-block:: bat
+
+    cd pkg\windows
+    build.bat 2017.7.2 3
+              ^^^^^^^^ ^
+                  |    |
+    # build version    |
+    # python version --
+
+This will install everything needed to build a Windows installer for Salt using
+Python 3. The binary will be in the ``salt\pkg\windows\installer`` directory.
+
+.. _test-salt-minion:
 
 Testing the Salt minion
 =======================
 
-1.  Create the directory C:\\salt (if it doesn't exist already)
+1. Create the directory ``C:\salt`` (if it doesn't exist already)
 
-2.  Copy the example ``conf`` and ``var`` directories from
-    ``pkg/windows/buildenv/`` into C:\\salt
+2. Copy the example ``conf`` and ``var`` directories from
+    ``pkg\windows\buildenv`` into ``C:\salt``
 
-3.  Edit C:\\salt\\conf\\minion
+3. Edit ``C:\salt\conf\minion``
 
     .. code-block:: bash
 
         master: ipaddress or hostname of your salt-master
 
-4.  Start the salt-minion
+4. Start the salt-minion
 
     .. code-block:: bash
 
         cd C:\Python27\Scripts
-        python salt-minion
+        python salt-minion -l debug
 
-5.  On the salt-master accept the new minion's key
+5. On the salt-master accept the new minion's key
 
     .. code-block:: bash
 
@@ -299,62 +510,23 @@ Testing the Salt minion
     This accepts all unaccepted keys. If you're concerned about security just
     accept the key for this specific minion.
 
-6.  Test that your minion is responding
+6. Test that your minion is responding
 
     On the salt-master run:
 
     .. code-block:: bash
 
-        sudo salt '*' test.ping
-
+        sudo salt '*' test.version
 
 You should get the following response: ``{'your minion hostname': True}``
 
-
-Single command bootstrap script
-===============================
-
-On a 64 bit Windows host the following script makes an unattended install of
-salt, including all dependencies:
-
-.. admonition:: Not up to date.
-
-    This script is not up to date. Please use the installer found above
-
-.. code-block:: bash
-
-    # (All in one line.)
-
-    "PowerShell (New-Object System.Net.WebClient).DownloadFile('http://csa-net.dk/salt/bootstrap64.bat','C:\bootstrap.bat');(New-Object -com Shell.Application).ShellExecute('C:\bootstrap.bat');"
-
-You can execute the above command remotely from a Linux host using winexe:
-
-.. code-block:: bash
-
-    winexe -U "administrator" //fqdn "PowerShell (New-Object ......);"
-
-
-For more info check `http://csa-net.dk/salt`_
-
-Packages management under Windows 2003
+Packages Management Under Windows 2003
 ======================================
 
-On windows Server 2003, you need to install optional component "wmi windows
-installer provider" to have full list of installed packages. If you don't have
-this, salt-minion can't report some installed packages.
+Windows Server 2003 and Windows XP have both reached End of Support. Though Salt
+is not officially supported on operating systems that are EoL, some
+functionality may continue to work.
 
-
-.. _http://csa-net.dk/salt: http://csa-net.dk/salt
-.. _vcredist_x86: http://www.microsoft.com/en-us/download/details.aspx?id=5582
-.. _vcredist_x64: http://www.microsoft.com/en-us/download/details.aspx?id=2092
-.. _msysgit: http://code.google.com/p/msysgit/downloads/list?can=3
-.. _Python 2.7: http://www.python.org/downloads
-.. _ez_setup.py: https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py
-.. _OpenSSL for Windows: http://slproweb.com/products/Win32OpenSSL.html
-.. _M2Crypto: http://chandlerproject.org/Projects/MeTooCrypto
-.. _pycrypto: http://www.voidspace.org.uk/python/modules.shtml#pycrypto
-.. _pywin32: http://sourceforge.net/projects/pywin32/files/pywin32
-.. _Cython: http://www.lfd.uci.edu/~gohlke/pythonlibs/#cython
-.. _jinja2: http://www.lfd.uci.edu/~gohlke/pythonlibs/#jinja2
-.. _msgpack: http://www.lfd.uci.edu/~gohlke/pythonlibs/#msgpack
-
+On Windows Server 2003, you need to install optional component "WMI Windows
+Installer Provider" to get a full list of installed packages. If you don't have
+this, salt-minion can't report some installed software.

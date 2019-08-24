@@ -10,6 +10,8 @@ A state module to manage Gentoo package overlays via layman
     sunrise:
         layman.present
 '''
+# Import Python libs
+from __future__ import absolute_import, print_function, unicode_literals
 
 
 def __virtual__():
@@ -39,17 +41,22 @@ def present(name):
         ret['result'] = None
         return ret
     else:
-        # Attempt to add the overlay
-        changes = __salt__['layman.add'](name)
-
-        # The overlay failed to add
-        if len(changes) < 1:
-            ret['comment'] = 'Overlay {0} failed to add'.format(name)
+        # Does the overlay exist?
+        if name not in __salt__['layman.list_all']():
+            ret['comment'] = 'Overlay {0} not found'.format(name)
             ret['result'] = False
-        # Success
         else:
-            ret['changes']['added'] = changes
-            ret['comment'] = 'Overlay {0} added.'.format(name)
+            # Attempt to add the overlay
+            changes = __salt__['layman.add'](name)
+
+            # The overlay failed to add
+            if not changes:
+                ret['comment'] = 'Overlay {0} failed to add'.format(name)
+                ret['result'] = False
+            # Success
+            else:
+                ret['changes']['added'] = changes
+                ret['comment'] = 'Overlay {0} added.'.format(name)
 
     return ret
 
@@ -78,7 +85,7 @@ def absent(name):
         changes = __salt__['layman.delete'](name)
 
         # The overlay failed to delete
-        if len(changes) < 1:
+        if not changes:
             ret['comment'] = 'Overlay {0} failed to delete'.format(name)
             ret['result'] = False
         # Success

@@ -9,29 +9,29 @@ use an existing table that has a username and a password column.
 To get started, create a simple table that holds just a username and
 a password. The password field will hold a SHA256 checksum.
 
-  .. code-block:: sql
+.. code-block:: sql
 
-  CREATE TABLE `users` (
-    `id` int(11) NOT NULL AUTO_INCREMENT,
-    `username` varchar(25) DEFAULT NULL,
-    `password` varchar(70) DEFAULT NULL,
-    PRIMARY KEY (`id`)
-  ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=latin1;
+    CREATE TABLE `users` (
+      `id` int(11) NOT NULL AUTO_INCREMENT,
+      `username` varchar(25) DEFAULT NULL,
+      `password` varchar(70) DEFAULT NULL,
+      PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=latin1;
 
 To create a user within MySQL, execute the following statement.
 
-  .. code-block:: sql
+.. code-block:: sql
 
-  INSERT INTO users VALUES (NULL, 'diana', SHA2('secret', 256))
+    INSERT INTO users VALUES (NULL, 'diana', SHA2('secret', 256))
 
-  .. code-block:: yaml
+.. code-block:: yaml
 
-  mysql_auth:
-    hostname: localhost
-    database: SaltStack
-    username: root
-    password: letmein
-    auth_sql: 'SELECT username FROM users WHERE username = "{0}" AND password = SHA2("{1}", 256)'
+    mysql_auth:
+      hostname: localhost
+      database: SaltStack
+      username: root
+      password: letmein
+      auth_sql: 'SELECT username FROM users WHERE username = "{0}" AND password = SHA2("{1}", 256)'
 
 The `auth_sql` contains the SQL that will validate a user to ensure they are
 correctly authenticated. This is where you can specify other SQL queries to
@@ -39,7 +39,7 @@ authenticate users.
 
 Enable MySQL authentication.
 
-  .. code-block:: yaml
+.. code-block:: yaml
 
     external_auth:
       mysql:
@@ -49,16 +49,35 @@ Enable MySQL authentication.
 :depends:   - MySQL-python Python module
 '''
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 import logging
 
 log = logging.getLogger(__name__)
 
 try:
+    # Trying to import MySQLdb
     import MySQLdb
-    HAS_MYSQL = True
+    import MySQLdb.cursors
+    import MySQLdb.converters
+    from MySQLdb.connections import OperationalError
 except ImportError:
-    HAS_MYSQL = False
+    try:
+        # MySQLdb import failed, try to import PyMySQL
+        import pymysql
+        pymysql.install_as_MySQLdb()
+        import MySQLdb
+        import MySQLdb.cursors
+        import MySQLdb.converters
+        from MySQLdb.err import OperationalError
+    except ImportError:
+        MySQLdb = None
+
+
+def __virtual__():
+    '''
+    Confirm that a python mysql client is installed.
+    '''
+    return bool(MySQLdb), 'No python mysql client installed.' if MySQLdb is None else ''
 
 
 def __get_connection_info():
@@ -75,7 +94,7 @@ def __get_connection_info():
 
         conn_info['auth_sql'] = __opts__['mysql_auth']['auth_sql']
     except KeyError as e:
-        log.error('{0} does not exist'.format(e))
+        log.error('%s does not exist', e)
         return None
 
     return conn_info
@@ -95,7 +114,7 @@ def auth(username, password):
                                _info['username'],
                                _info['password'],
                                _info['database'])
-    except MySQLdb.OperationalError as e:
+    except OperationalError as e:
         log.error(e)
         return False
 

@@ -1,8 +1,8 @@
 .. _all-salt.roster:
 
-===================================
-Full list of builtin roster modules
-===================================
+==============
+roster modules
+==============
 
 .. currentmodule:: salt.roster
 
@@ -10,5 +10,14 @@ Full list of builtin roster modules
     :toctree:
     :template: autosummary.rst.tmpl
 
+    ansible
+    cache
+    cloud
+    clustershell
+    dir
     flat
+    range
     scan
+    sshconfig
+    terraform
+    sshknownhosts

@@ -7,9 +7,13 @@ Highstate data structure definitions
 The Salt State Tree
 ===================
 
-A state tree is a collection of ``SLS`` files that live under the directory
-specified in :conf_master:`file_roots`. A state tree can be organized into
-``SLS modules``.
+A state tree is a collection of ``SLS`` files and directories that live under the directory
+specified in :conf_master:`file_roots`.
+
+.. note::
+
+   Directory names or filenames in the state tree cannot contain a period, with the
+   exception of the period in the .sls file suffix.
 
 .. _states-highstate-top-file:
 
@@ -21,7 +25,7 @@ during state execution.
 
 Configurable via :conf_master:`state_top`.
 
-.. seealso:: :doc:`A detailed description of the top file </ref/states/top>`
+.. seealso:: :ref:`A detailed description of the top file <states-top>`
 
 .. _include-declaration:
 
@@ -30,7 +34,7 @@ Include declaration
 
 Defines a list of :ref:`module-reference` strings to include in this ``SLS``.
 
-Occurs only in the top level of the highstate structure.
+Occurs only in the top level of the SLS data structure.
 
 Example:
 
@@ -54,10 +58,10 @@ file ``salt://edit/vim.sls``.
 ID declaration
 --------------
 
-Defines an individual highstate component. Always references a value of a
-dictionary containing keys referencing :ref:`state-declaration` and
-:ref:`requisite-declaration`. Can be overridden by a :ref:`name-declaration` or
-a :ref:`names-declaration`.
+Defines an individual :ref:`highstate <running-highstate>` component. Always
+references a value of a dictionary containing keys referencing
+:ref:`state-declaration` and :ref:`requisite-declaration`. Can be overridden by
+a :ref:`name-declaration` or a :ref:`names-declaration`.
 
 Occurs on the top level or under the :ref:`extend-declaration`.
 
@@ -68,7 +72,7 @@ ID declarations with the same name will be ignored.
 .. note:: Naming gotchas
 
     In Salt versions earlier than 0.9.7, ID declarations containing dots would
-    result in unpredictable highstate output.
+    result in unpredictable output.
 
 .. _extend-declaration:
 
@@ -76,9 +80,8 @@ Extend declaration
 ------------------
 
 Extends a :ref:`name-declaration` from an included ``SLS module``. The
-keys of the extend declaration always define existing :ref`ID declaration`
-which have been defined in included
-``SLS modules``.
+keys of the extend declaration always refer to an existing
+:ref:`id-declaration` which have been defined in included ``SLS modules``.
 
 Occurs only in the top level and defines a dictionary.
 
@@ -103,8 +106,8 @@ declaration that will restart Apache whenever the Apache configuration file,
             - file: mywebsite
 
     mywebsite:
-      file:
-        - managed
+      file.managed:
+        - name: /var/www/mysite
 
 .. seealso:: watch_in and require_in
 
@@ -112,7 +115,7 @@ declaration that will restart Apache whenever the Apache configuration file,
     <requisites-watch-in>` or :ref:`require_in <requisites-require-in>` syntax
     instead of extending another ``SLS`` file.
 
-    :doc:`State Requisites </ref/states/requisites>`
+    :ref:`State Requisites <requisites>`
 
 .. _state-declaration:
 
@@ -168,10 +171,10 @@ For example, the following state declaration calls the :mod:`installed
 .. code-block:: yaml
 
     httpd:
-      pkg.installed
+      pkg.installed: []
 
-The function can be declared inline with the state as a shortcut, but
-the actual data structure is better referenced in this form:
+The function can be declared inline with the state as a shortcut.
+The actual data structure is compiled to this form:
 
 .. code-block:: yaml
 
@@ -203,10 +206,8 @@ VALID:
 .. code-block:: yaml
 
     httpd:
-      pkg:
-        - installed
-      service:
-        - running
+      pkg.installed: []
+      service.running: []
 
 Occurs as the only index in the :ref:`state-declaration` list.
 
@@ -280,8 +281,7 @@ easier to specify ``mywebsite`` than to specify
           - file: mywebsite
 
     apache2:
-      service:
-        - running
+      service.running:
         - watch:
           - file: mywebsite
 

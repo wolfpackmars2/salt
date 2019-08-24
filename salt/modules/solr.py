@@ -60,13 +60,12 @@ verbose : True
 '''
 
 # Import python Libs
-from __future__ import absolute_import
-import json
+from __future__ import absolute_import, unicode_literals, print_function
 import os
 
 # Import 3rd-party libs
 # pylint: disable=no-name-in-module,import-error
-from salt.ext.six import string_types
+from salt.ext import six
 from salt.ext.six.moves.urllib.request import (
         urlopen as _urlopen,
         HTTPBasicAuthHandler as _HTTPBasicAuthHandler,
@@ -77,9 +76,10 @@ from salt.ext.six.moves.urllib.request import (
 # pylint: enable=no-name-in-module,import-error
 
 # Import salt libs
-import salt.utils
+import salt.utils.json
+import salt.utils.path
 
-########################## PRIVATE METHODS ##############################
+# ######################### PRIVATE METHODS ##############################
 
 
 def __virtual__():
@@ -89,11 +89,11 @@ def __virtual__():
 
     Return: str/bool
     '''
-    if salt.utils.which('solr'):
+    if salt.utils.path.which('solr'):
         return 'solr'
-    if salt.utils.which('apache-solr'):
+    if salt.utils.path.which('apache-solr'):
         return 'solr'
-    return False
+    return (False, 'The solr execution module failed to load: requires both the solr and apache-solr binaries in the path.')
 
 
 def _get_none_or_value(value):
@@ -113,7 +113,7 @@ def _get_none_or_value(value):
     elif not value:
         return value
     # if it's a string, and it's not empty check for none
-    elif isinstance(value, string_types):
+    elif isinstance(value, six.string_types):
         if value.lower() == 'none':
             return None
         return value
@@ -218,14 +218,14 @@ def _format_url(handler, host=None, core_name=None, extra=None):
     port = __salt__['config.option']('solr.port')
     baseurl = __salt__['config.option']('solr.baseurl')
     if _get_none_or_value(core_name) is None:
-        if extra is None or len(extra) == 0:
+        if not extra:
             return "http://{0}:{1}{2}/{3}?wt=json".format(
                     host, port, baseurl, handler)
         else:
             return "http://{0}:{1}{2}/{3}?wt=json&{4}".format(
                     host, port, baseurl, handler, "&".join(extra))
     else:
-        if extra is None or len(extra) == 0:
+        if not extra:
             return "http://{0}:{1}{2}/{3}/{4}?wt=json".format(
                     host, port, baseurl, core_name, handler)
         else:
@@ -258,7 +258,7 @@ def _auth(url):
 def _http_request(url, request_timeout=None):
     '''
     PRIVATE METHOD
-    Uses json.load to fetch the JSON results from the solr API.
+    Uses salt.utils.json.load to fetch the JSON results from the solr API.
 
     url : str
         a complete URL that can be passed to urllib.open
@@ -274,10 +274,8 @@ def _http_request(url, request_timeout=None):
     try:
 
         request_timeout = __salt__['config.option']('solr.request_timeout')
-        if request_timeout is None:
-            data = json.load(_urlopen(url))
-        else:
-            data = json.load(_urlopen(url, timeout=request_timeout))
+        kwargs = {} if request_timeout is None else {'timeout': request_timeout}
+        data = salt.utils.json.load(_urlopen(url, **kwargs))
         return _get_return_dict(True, data, [])
     except Exception as err:
         return _get_return_dict(False, {}, ["{0} : {1}".format(url, err)])
@@ -367,9 +365,9 @@ def _merge_options(options):
     defaults = __salt__['config.option']('solr.dih.import_options')
     if isinstance(options, dict):
         defaults.update(options)
-    for key, val in defaults.items():
+    for key, val in six.iteritems(defaults):
         if isinstance(val, bool):
-            defaults[key] = str(val).lower()
+            defaults[key] = six.text_type(val).lower()
     return defaults
 
 
@@ -446,7 +444,7 @@ def _find_value(ret_dict, key, path=None):
         path = "{0}:{1}".format(path, key)
 
     ret = []
-    for ikey, val in ret_dict.items():
+    for ikey, val in six.iteritems(ret_dict):
         if ikey == key:
             ret.append({path: val})
         if isinstance(val, list):
@@ -458,7 +456,7 @@ def _find_value(ret_dict, key, path=None):
     return ret
 
 
-########################## PUBLIC METHODS ##############################
+# ######################### PUBLIC METHODS ##############################
 
 def lucene_version(core_name=None):
     '''
@@ -1021,7 +1019,7 @@ def signal(signal=None):
             signal, ', '.join(msg))
 
     cmd = "{0} {1}".format(__opts__['solr.init_script'], signal)
-    __salt__['cmd.run'](cmd)
+    __salt__['cmd.run'](cmd, python_shell=False)
 
 
 def reload_core(host=None, core_name=None):
@@ -1111,7 +1109,7 @@ def core_status(host=None, core_name=None):
     return _http_request(url)
 
 
-################### DIH (Direct Import Handler) COMMANDS #####################
+# ################## DIH (Direct Import Handler) COMMANDS #####################
 
 def reload_import_config(handler, host=None, core_name=None, verbose=False):
     '''
@@ -1247,7 +1245,7 @@ def full_import(handler, host=None, core_name=None, options=None, extra=None):
             errors = ['Failed to set the replication status on the master.']
             return _get_return_dict(False, errors=errors)
     params = ['command=full-import']
-    for key, val in options.items():
+    for key, val in six.iteritems(options):
         params.append('&{0}={1}'.format(key, val))
     url = _format_url(handler, host=host, core_name=core_name,
                       extra=params + extra)
@@ -1301,7 +1299,7 @@ def delta_import(handler, host=None, core_name=None, options=None, extra=None):
             errors = ['Failed to set the replication status on the master.']
             return _get_return_dict(False, errors=errors)
     params = ['command=delta-import']
-    for key, val in options.items():
+    for key, val in six.iteritems(options):
         params.append("{0}={1}".format(key, val))
     url = _format_url(handler, host=host, core_name=core_name,
                       extra=params + extra)

@@ -3,13 +3,16 @@
 Support for getting and setting the environment variables
 of the current salt process.
 '''
-from __future__ import absolute_import
 
-# Import python libs
+# Import Python libs
+from __future__ import absolute_import, print_function, unicode_literals
 import os
 
-# Import salt libs
-from salt.ext.six import string_types
+# Import Salt libs
+import salt.utils.platform
+
+# Import 3rd-party libs
+from salt.ext import six
 
 
 def __virtual__():
@@ -19,11 +22,21 @@ def __virtual__():
     return True
 
 
+def _norm_key(key):
+    '''
+    Normalize windows environment keys
+    '''
+    if salt.utils.platform.is_windows():
+        return key.upper()
+    return key
+
+
 def setenv(name,
            value,
            false_unsets=False,
            clear_all=False,
-           update_minion=False):
+           update_minion=False,
+           permanent=False):
     '''
     Set the salt process environment variables.
 
@@ -56,18 +69,26 @@ def setenv(name,
         current salt subprocess.
         Default: False
 
-    CLI Example:
+    permanent
+        On Windows minions this will set the environment variable in the
+        registry so that it is always added as a environment variable when
+        applications open. If you want to set the variable to HKLM instead of
+        HKCU just pass in "HKLM" for this parameter. On all other minion types
+        this will be ignored. Note: This will only take affect on applications
+        opened after this has been set.
+
+    Example:
 
     .. code-block:: yaml
 
         a_string_env:
-           environ.set:
+           environ.setenv:
              - name: foo
              - value: bar
              - update_minion: True
 
         a_dict_env:
-           environ.set:
+           environ.setenv:
              - name: does_not_matter
              - value:
                  foo: bar
@@ -79,13 +100,13 @@ def setenv(name,
            'result': True,
            'comment': ''}
     environ = {}
-    if isinstance(value, string_types):
+    if isinstance(value, six.string_types) or value is False:
         environ[name] = value
     elif isinstance(value, dict):
         environ = value
     else:
         ret['result'] = False
-        ret['comment'] = 'Environ value must be string or dict'
+        ret['comment'] = 'Environ value must be string, dict or False'
         return ret
 
     if clear_all is True:
@@ -101,12 +122,24 @@ def setenv(name,
 
     current_environ = dict(os.environ)
     already_set = []
-    for key, val in environ.items():
+    for key, val in six.iteritems(environ):
         if val is False:
             # We unset this key from the environment if
             # false_unsets is True. Otherwise we want to set
             # the value to ''
-            if current_environ.get(key, None) is None:
+            def key_exists():
+                if salt.utils.platform.is_windows():
+                    permanent_hive = 'HKCU'
+                    permanent_key = 'Environment'
+                    if permanent == 'HKLM':
+                        permanent_hive = 'HKLM'
+                        permanent_key = r'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
+
+                    out = __utils__['reg.read_value'](permanent_hive, permanent_key, _norm_key(key))
+                    return out['success'] is True
+                else:
+                    return False
+            if current_environ.get(_norm_key(key), None) is None and not key_exists():
                 # The key does not exist in environment
                 if false_unsets is not True:
                     # This key will be added with value ''
@@ -115,13 +148,13 @@ def setenv(name,
                 # The key exists.
                 if false_unsets is not True:
                     # Check to see if the value will change
-                    if current_environ.get(key, None) != '':
+                    if current_environ.get(_norm_key(key), None) != '':
                         # This key value will change to ''
                         ret['changes'].update({key: ''})
                 else:
                     # We're going to delete the key
                     ret['changes'].update({key: None})
-        elif current_environ.get(key, '') == val:
+        elif current_environ.get(_norm_key(key), '') == val:
             already_set.append(key)
         else:
             ret['changes'].update({key: val})
@@ -137,7 +170,8 @@ def setenv(name,
         environ_ret = __salt__['environ.setenv'](environ,
                                                  false_unsets,
                                                  clear_all,
-                                                 update_minion)
+                                                 update_minion,
+                                                 permanent)
         if not environ_ret:
             ret['result'] = False
             ret['comment'] = 'Failed to set environ variables'

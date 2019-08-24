@@ -20,8 +20,10 @@ A history file is maintained in ~/.saltsh_history.
 completion behavior can be customized via the ~/.inputrc file.
 
 '''
+# pylint: disable=file-perms
 
 # Import python libs
+from __future__ import absolute_import
 import atexit
 import os
 import readline
@@ -38,15 +40,13 @@ import salt.runner
 
 # Import 3rd party libs
 import jinja2
+from salt.ext.six.moves import builtins  # pylint: disable=import-error
 
-
-# pylint: disable=W0611
-# These are imported to be available in the spawmed shell
-
-
-import yaml
+# pylint: disable=unused-import
+# These are imported to be available in the spawned shell
+import salt.utils.yaml
 import pprint
-
+# pylint: enable=unused-import
 
 HISTFILE = '{HOME}/.saltsh_history'.format(**os.environ)
 
@@ -87,7 +87,7 @@ def get_salt_vars():
             __opts__,
             __grains__,
             __opts__.get('id'),
-            __opts__.get('environment'),
+            __opts__.get('saltenv'),
         ).compile_pillar()
     else:
         __pillar__ = {}
@@ -113,12 +113,7 @@ def main():
         Use Salt's outputters to print values to the shell
         '''
         if value is not None:
-            try:
-                import __builtin__
-                __builtin__._ = value
-            except ImportError:
-                __builtins__._ = value
-
+            builtins._ = value
             salt.output.display_output(value, '', salt_vars['__opts__'])
 
     sys.displayhook = salt_outputter

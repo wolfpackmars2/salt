@@ -6,7 +6,7 @@ znc - An advanced IRC bouncer
 
 Provides an interface to basic ZNC functionality
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 
 # Import python libs
 import hashlib
@@ -16,7 +16,7 @@ import random
 import signal
 
 # Import salt libs
-import salt.utils
+import salt.utils.path
 from salt.ext.six.moves import range
 
 log = logging.getLogger(__name__)
@@ -26,9 +26,9 @@ def __virtual__():
     '''
     Only load the module if znc is installed
     '''
-    if salt.utils.which('znc'):
+    if salt.utils.path.which('znc'):
         return 'znc'
-    return False
+    return (False, "Module znc: znc binary not found")
 
 
 def _makepass(password, hasher='sha256'):
@@ -73,8 +73,9 @@ def buildmod(*modules):
     if missing:
         return 'Error: The file ({0}) does not exist.'.format(', '.join(missing))
 
-    cmd = 'znc-buildmod {0}'.format(' '.join(modules))
-    out = __salt__['cmd.run'](cmd).splitlines()
+    cmd = ['znc-buildmod']
+    cmd.extend(modules)
+    out = __salt__['cmd.run'](cmd, python_shell=False).splitlines()
     return out[-1]
 
 
@@ -114,7 +115,7 @@ def version():
 
         salt '*' znc.version
     '''
-    cmd = 'znc --version'
-    out = __salt__['cmd.run'](cmd).splitlines()
+    cmd = ['znc', '--version']
+    out = __salt__['cmd.run'](cmd, python_shell=False).splitlines()
     ret = out[0].split(' - ')
     return ret[0]

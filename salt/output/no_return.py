@@ -12,10 +12,13 @@ Example output::
     virtucentos:
         Minion did not return
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 
 # Import salt libs
-import salt.utils
+import salt.utils.color
+
+# Import 3rd-party libs
+from salt.ext import six
 
 
 class NestDisplay(object):
@@ -23,13 +26,15 @@ class NestDisplay(object):
     Create generator for nested output
     '''
     def __init__(self):
-        self.colors = salt.utils.get_colors(__opts__.get('color'))
+        self.colors = salt.utils.color.get_colors(
+                __opts__.get('color'),
+                __opts__.get('color_theme'))
 
     def display(self, ret, indent, prefix, out):
         '''
         Recursively iterate down through data structures to determine output
         '''
-        if isinstance(ret, str):
+        if isinstance(ret, six.string_types):
             lines = ret.split('\n')
             for line in lines:
                 out += '{0}{1}{2}{3}{4}\n'.format(
@@ -51,7 +56,7 @@ class NestDisplay(object):
         return out
 
 
-def output(ret):
+def output(ret, **kwargs):  # pylint: disable=unused-argument
     '''
     Display ret data
     '''

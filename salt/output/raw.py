@@ -15,12 +15,21 @@ Example output::
 
     {'myminion': {'foo': {'list': ['Hello', 'World'], 'bar': 'baz', 'dictionary': {'abc': 123, 'def': 456}}}}
 '''
+
+# Import Python libs
+from __future__ import absolute_import, print_function, unicode_literals
+
 # Import Salt libs
-import salt.utils
+import salt.utils.stringutils
+
+# Import 3rd-party libs
+from salt.ext import six
 
 
-def output(data):
+def output(data, **kwargs):  # pylint: disable=unused-argument
     '''
     Rather basic....
     '''
-    return salt.utils.sdecode(str(data))
+    if not isinstance(data, six.string_types):
+        data = six.text_type(data)
+    return salt.utils.stringutils.to_unicode(data)

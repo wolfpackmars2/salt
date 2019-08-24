@@ -5,7 +5,7 @@ powerpath support.
 Assumes RedHat
 
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 
 # Import python libs
 import os
@@ -40,15 +40,15 @@ def __virtual__():
     try:
         kernel_grain = __grains__['kernel']
     except Exception:
-        return False
+        return (False, 'The powerpath execution module cannot be loaded: unable to detect kernel grain.')
 
     if not has_powerpath():
-        return False
+        return (False, 'The powerpath execution module cannot be loaded: the emcpreg binary is not available.')
 
     if kernel_grain == 'Linux':
         return 'powerpath'
 
-    return False
+    return (False, 'The powerpath execution module cannot be loaded: only available on Linux.')
 
 
 def list_licenses():
@@ -85,7 +85,7 @@ def add_license(key):
         return result
 
     cmd = '/sbin/emcpreg -add {0}'.format(key)
-    ret = __salt__['cmd.run_all'](cmd)
+    ret = __salt__['cmd.run_all'](cmd, python_shell=True)
 
     result['retcode'] = ret['retcode']
 
@@ -113,7 +113,7 @@ def remove_license(key):
         return result
 
     cmd = '/sbin/emcpreg -remove {0}'.format(key)
-    ret = __salt__['cmd.run_all'](cmd)
+    ret = __salt__['cmd.run_all'](cmd, python_shell=True)
 
     result['retcode'] = ret['retcode']
 

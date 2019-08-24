@@ -59,7 +59,6 @@ Example of a ``cmd`` state calling a python function::
     state('hello').cmd.call(hello, 'pydsl!')
 
 '''
-from __future__ import absolute_import
 
 # Implementation note:
 #  - There's a bit of terminology mix-up here:
@@ -70,7 +69,7 @@ from __future__ import absolute_import
 #    - and a state function is a function declaration.
 
 
-#TODOs:
+# TODOs:
 #
 #  - support exclude declarations
 #
@@ -85,17 +84,18 @@ from __future__ import absolute_import
 #
 
 # Import python libs
+from __future__ import absolute_import, print_function, unicode_literals
 from uuid import uuid4 as _uuid
 
 # Import salt libs
 from salt.utils.odict import OrderedDict
-from salt.utils import warn_until
 from salt.state import HighState
-from salt.ext.six import string_types
-import salt.ext.six as six
+
+# Import 3rd-party libs
+from salt.ext import six
 
 
-REQUISITES = set('require watch prereq use require_in watch_in prereq_in use_in onchanges onfail'.split())
+REQUISITES = set('listen require watch prereq use listen_in require_in watch_in prereq_in use_in onchanges onfail'.split())
 
 
 class PyDslError(Exception):
@@ -138,14 +138,9 @@ class Sls(object):
         self.options.update(options)
 
     def include(self, *sls_names, **kws):
-        if kws.get('env', None) is not None:
-            warn_until(
-                'Boron',
-                'Passing a salt environment should be done using \'saltenv\' '
-                'not \'env\'. This functionality will be removed in Salt Boron.'
-            )
-            # Backwards compatibility
-            kws['saltenv'] = kws.pop('env')
+        if 'env' in kws:
+            # "env" is not supported; Use "saltenv".
+            kws.pop('env')
 
         saltenv = kws.get('saltenv', self.saltenv)
 
@@ -256,14 +251,14 @@ class Sls(object):
                     modname, funcname = modname.rsplit('.', 1)
                 else:
                     funcname = next((
-                        x for x in args if isinstance(x, string_types)
+                        x for x in args if isinstance(x, six.string_types)
                     ))
                     args.remove(funcname)
                 mod = getattr(s, modname)
                 named_args = {}
                 for x in args:
                     if isinstance(x, dict):
-                        k, v = next(x.iteritems())
+                        k, v = next(six.iteritems(x))
                         named_args[k] = v
                 mod(funcname, **named_args)
 
@@ -450,7 +445,7 @@ class StateFunction(object):
                     mod, ref
                 )
             )
-        self.args.append({req_type: [{str(mod): str(ref)}]})
+        self.args.append({req_type: [{six.text_type(mod): six.text_type(ref)}]})
 
     ns = locals()
     for req_type in REQUISITES:

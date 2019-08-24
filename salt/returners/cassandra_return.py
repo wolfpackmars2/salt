@@ -18,17 +18,18 @@ Required python modules: pycassa
 
     salt '*' test.ping --return cassandra
 '''
-from __future__ import absolute_import
 
 # Import python libs
+from __future__ import absolute_import, print_function, unicode_literals
 import logging
 
 # Import salt libs
-import salt.utils
+import salt.utils.jid
 
 # Import third party libs
+from salt.ext import six
 try:
-    import pycassa
+    import pycassa  # pylint: disable=import-error
     HAS_PYCASSA = True
 except ImportError:
     HAS_PYCASSA = False
@@ -46,7 +47,7 @@ __virtualname__ = 'cassandra'
 
 def __virtual__():
     if not HAS_PYCASSA:
-        return False
+        return False, 'Could not import cassandra returner; pycassa is not installed.'
     return __virtualname__
 
 
@@ -66,17 +67,17 @@ def returner(ret):
     columns = {'fun': ret['fun'],
                'id': ret['id']}
     if isinstance(ret['return'], dict):
-        for key, value in ret['return'].items():
-            columns['return.{0}'.format(key)] = str(value)
+        for key, value in six.iteritems(ret['return']):
+            columns['return.{0}'.format(key)] = six.text_type(value)
     else:
-        columns['return'] = str(ret['return'])
+        columns['return'] = six.text_type(ret['return'])
 
     log.debug(columns)
     ccf.insert(ret['jid'], columns)
 
 
-def prep_jid(nocache, passed_jid=None):  # pylint: disable=unused-argument
+def prep_jid(nocache=False, passed_jid=None):  # pylint: disable=unused-argument
     '''
     Do any work necessary to prepare a JID, including sending a custom id
     '''
-    return passed_jid if passed_jid is not None else salt.utils.gen_jid()
+    return passed_jid if passed_jid is not None else salt.utils.jid.gen_jid(__opts__)

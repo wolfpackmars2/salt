@@ -3,15 +3,19 @@
 The daemons package is used to store implementations of the Salt Master and
 Minion enabling different transports.
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 # Import Python Libs
 import sys
-from collections import namedtuple, Iterable, Sequence, Mapping
+
+try:
+    from collections.abc import Iterable, Sequence, Mapping
+except ImportError:
+    from collections import Iterable, Sequence, Mapping
+
 import logging
 
 # Import Salt Libs
-from salt.utils.odict import OrderedDict
-import salt.ext.six as six
+from salt.ext import six
 
 log = logging.getLogger(__name__)
 
@@ -41,10 +45,16 @@ def is_non_string_sequence(obj):
     return not isinstance(obj, six.string_types) and isinstance(obj, Sequence)
 
 
-def extract_masters(opts):
+def extract_masters(opts, masters='master', port=None, raise_if_empty=True):
     '''
-    Parses master from opts['master'] and extracts a dict of master IP host
-    addresses and ports.
+    Parses opts and generates a list of master (host,port) addresses.
+    By default looks for list of masters in opts['master'] and uses
+    opts['master_port'] as the default port when otherwise not provided.
+
+    Use the opts key given by masters for the masters list, default is 'master'
+    If parameter port is not None then uses the default port given by port
+
+
     Returns a list of host address dicts of the form
 
     [
@@ -56,7 +66,6 @@ def extract_masters(opts):
 
     ]
 
-    If a port is not provided then uses opts['master_port'] as the default.
     When only one address is provided it is assigned to the external address field
     When not provided the internal address field is set to None.
 
@@ -127,7 +136,10 @@ def extract_masters(opts):
 
             - they.example.com
     '''
-    master_port = opts.get('master_port')
+    if port is not None:
+        master_port = opts.get(port)
+    else:
+        master_port = opts.get('master_port')
     try:
         master_port = int(master_port)
     except ValueError:
@@ -135,14 +147,16 @@ def extract_masters(opts):
 
     if not master_port:
         emsg = "Invalid or missing opts['master_port']."
-        log.error(emsg + '\n')
+        log.error(emsg)
         raise ValueError(emsg)
 
-    entries = opts.get('master')
+    entries = opts.get(masters, [])
+
     if not entries:
-        emsg = "Invalid or missing opts['master']."
-        log.error(emsg + '\n')
-        raise ValueError(emsg)
+        emsg = "Invalid or missing opts['{0}'].".format(masters)
+        log.error(emsg)
+        if raise_if_empty:
+            raise ValueError(emsg)
 
     hostages = []
     # extract candidate hostage (hostname dict) from entries

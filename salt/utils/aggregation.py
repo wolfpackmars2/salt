@@ -103,11 +103,16 @@
 
 '''
 
-from __future__ import absolute_import
-from copy import copy
+# Import python libs
+from __future__ import absolute_import, print_function, unicode_literals
+import copy
 import logging
 
+# Import Salt libs
 from salt.utils.odict import OrderedDict
+
+# Import 3rd-party libs
+from salt.ext import six
 
 __all__ = ['aggregate', 'Aggregate', 'Map', 'Scalar', 'Sequence']
 
@@ -115,24 +120,21 @@ log = logging.getLogger(__name__)
 
 
 class Aggregate(object):
-    """
+    '''
     Aggregation base.
-    """
-    pass
+    '''
 
 
 class Map(OrderedDict, Aggregate):
-    """
+    '''
     Map aggregation.
-    """
-    pass
+    '''
 
 
 class Sequence(list, Aggregate):
-    """
+    '''
     Sequence aggregation.
-    """
-    pass
+    '''
 
 
 def Scalar(obj):
@@ -197,7 +199,7 @@ def mark(obj, map_class=Map, sequence_class=Sequence):
         return sequence_class([obj])
 
 
-def aggregate(obj_a, obj_b, level=False, map_class=Map, sequence_class=Sequence):  # NOQA
+def aggregate(obj_a, obj_b, level=False, map_class=Map, sequence_class=Sequence):
     '''
     Merge obj_b into obj_a.
 
@@ -213,12 +215,12 @@ def aggregate(obj_a, obj_b, level=False, map_class=Map, sequence_class=Sequence)
     if isinstance(obj_a, dict) and isinstance(obj_b, dict):
         if isinstance(obj_a, Aggregate) and isinstance(obj_b, Aggregate):
             # deep merging is more or less a.update(obj_b)
-            response = copy(obj_a)
+            response = copy.copy(obj_a)
         else:
             # introspection on obj_b keys only
-            response = copy(obj_b)
+            response = copy.copy(obj_b)
 
-        for key, value in obj_b.items():
+        for key, value in six.iteritems(obj_b):
             if key in obj_a:
                 value = aggregate(obj_a[key], value,
                                   subdeep, map_class, sequence_class)
@@ -232,7 +234,7 @@ def aggregate(obj_a, obj_b, level=False, map_class=Map, sequence_class=Sequence)
                 response.append(value)
         return response
 
-    response = copy(obj_b)
+    response = copy.copy(obj_b)
 
     if isinstance(obj_a, Aggregate) or isinstance(obj_b, Aggregate):
         log.info('only one value marked as aggregate. keep `obj_b` value')

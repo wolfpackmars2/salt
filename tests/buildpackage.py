@@ -8,6 +8,9 @@
 # run tests. It *will* install the build deps on the machine running the script.
 #
 
+# pylint: disable=file-perms,resource-leakage
+
+from __future__ import absolute_import, print_function
 import errno
 import glob
 import logging
@@ -174,16 +177,16 @@ def _move(src, dst):
 
 
 def _run_command(args):
-    log.info('Running command: {0}'.format(args))
+    log.info('Running command: %s', args)
     proc = subprocess.Popen(args,
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE)
     stdout, stderr = proc.communicate()
     if stdout:
-        log.debug('Command output: \n{0}'.format(stdout))
+        log.debug('Command output: \n%s', stdout)
     if stderr:
         log.error(stderr)
-    log.info('Return code: {0}'.format(proc.returncode))
+    log.info('Return code: %s', proc.returncode)
     return stdout, stderr, proc.returncode
 
 
@@ -196,7 +199,7 @@ def _make_sdist(opts, python_bin='python'):
             glob.iglob(os.path.join(opts.source_dir, 'dist', 'salt-*.tar.gz')),
             key=os.path.getctime
         )
-        log.info('sdist is located at {0}'.format(sdist_path))
+        log.info('sdist is located at %s', sdist_path)
         return sdist_path
     else:
         _abort('Failed to create sdist')
@@ -217,11 +220,11 @@ def build_centos(opts):
             major_release = int(redhat_release.split()[2].split('.')[0])
     except (ValueError, IndexError):
         _abort('Unable to determine major release from /etc/redhat-release '
-               'contents: {0!r}'.format(redhat_release))
+               'contents: \'{0}\''.format(redhat_release))
     except IOError as exc:
         _abort('{0}'.format(exc))
 
-    log.info('major_release: {0}'.format(major_release))
+    log.info('major_release: %s', major_release)
 
     define_opts = [
         '--define',
@@ -231,6 +234,8 @@ def build_centos(opts):
     if major_release == 5:
         python_bin = 'python26'
         define_opts.extend(['--define', 'dist .el5'])
+        if os.path.exists('/etc/yum.repos.d/saltstack.repo'):
+            build_reqs.extend(['--enablerepo=saltstack'])
         build_reqs.extend(['python26-devel'])
     elif major_release == 6:
         build_reqs.extend(['python-devel'])
@@ -255,7 +260,7 @@ def build_centos(opts):
     try:
         base, offset, oid = tarball_re.match(os.path.basename(sdist)).groups()
     except AttributeError:
-        _abort('Unable to extract version info from sdist filename {0!r}'
+        _abort('Unable to extract version info from sdist filename \'{0}\''
                .format(sdist))
 
     if offset is None:
@@ -264,8 +269,8 @@ def build_centos(opts):
         salt_pkgver = '.'.join((base, offset, oid))
         salt_srcver = '-'.join((base, offset, oid))
 
-    log.info('salt_pkgver: {0}'.format(salt_pkgver))
-    log.info('salt_srcver: {0}'.format(salt_srcver))
+    log.info('salt_pkgver: %s', salt_pkgver)
+    log.info('salt_srcver: %s', salt_srcver)
 
     # Setup build environment
     for build_dir in 'BUILD BUILDROOT RPMS SOURCES SPECS SRPMS'.split():
@@ -284,7 +289,7 @@ def build_centos(opts):
     for src in ('salt-master', 'salt-syndic', 'salt-minion', 'salt-api',
                 'salt-master.service', 'salt-syndic.service',
                 'salt-minion.service', 'salt-api.service',
-                'README.fedora', 'logrotate.salt'):
+                'README.fedora', 'logrotate.salt', 'salt.bash'):
         shutil.copy(os.path.join(rpm_sources_path, src), build_sources_path)
 
     # Prepare SPEC file
@@ -347,8 +352,8 @@ if __name__ == '__main__':
                         datefmt=log_datefmt,
                         level=LOG_LEVELS[opts.log_level])
     if opts.log_level not in LOG_LEVELS:
-        log.error('Invalid log level {0!r}, falling back to \'warning\''
-                  .format(opts.log_level))
+        log.error('Invalid log level \'%s\', falling back to \'warning\'',
+                  opts.log_level)
 
     # Build for the specified platform
     if not opts.platform:
@@ -356,7 +361,7 @@ if __name__ == '__main__':
     elif opts.platform.lower() == 'centos':
         artifacts = build_centos(opts)
     else:
-        _abort('Unsupported platform {0!r}'.format(opts.platform))
+        _abort('Unsupported platform \'{0}\''.format(opts.platform))
 
     msg = ('Build complete. Artifacts will be stored in {0}'
            .format(opts.artifact_dir))
@@ -364,5 +369,5 @@ if __name__ == '__main__':
     print(msg)  # pylint: disable=C0325
     for artifact in artifacts:
         shutil.copy(artifact, opts.artifact_dir)
-        log.info('Copied {0} to artifact directory'.format(artifact))
+        log.info('Copied %s to artifact directory', artifact)
     log.info('Done!')

@@ -1,79 +1,65 @@
 # -*- coding: utf-8 -*-
 '''
-Execute overstate functions
+Execute orchestration functions
 '''
 # Import pytohn libs
-from __future__ import print_function
-from __future__ import absolute_import
-
-import fnmatch
-import json
+from __future__ import absolute_import, print_function, unicode_literals
 import logging
-import sys
 
 # Import salt libs
-import salt.overstate
-import salt.syspaths
+import salt.loader
 import salt.utils.event
+import salt.utils.functools
+import salt.utils.jid
 from salt.exceptions import SaltInvocationError
 
 LOGGER = logging.getLogger(__name__)
 
 
-def over(saltenv='base', os_fn=None):
+def pause(jid, state_id=None, duration=None):
     '''
-    .. versionadded:: 0.11.0
-
-    .. warning::
-
-        ``state.over`` is deprecated in favor of ``state.orchestrate``, and
-        will be removed in the Salt feature release codenamed Boron.
-        (Three feature releases after the 2014.7.0 release, which is codenamed
-        Helium)
-
-    Execute an overstate sequence to orchestrate the executing of states
-    over a group of systems
-
-    CLI Examples:
-
-    .. code-block:: bash
-
-        salt-run state.over base /path/to/myoverstate.sls
+    Set up a state id pause, this instructs a running state to pause at a given
+    state id. This needs to pass in the jid of the running state and can
+    optionally pass in a duration in seconds.
     '''
-    salt.utils.warn_until(
-            'Boron',
-            'The state.over runner is on a deprecation path and will be '
-            'removed in Salt Boron. Please migrate to state.orchestrate.'
-            )
-
-    stage_num = 0
-    try:
-        overstate = salt.overstate.OverState(__opts__, saltenv, os_fn)
-    except IOError as exc:
-        raise SaltInvocationError(
-            '{0}: {1!r}'.format(exc.strerror, exc.filename)
-        )
-    for stage in overstate.stages_iter():
-        if isinstance(stage, dict):
-            # This is highstate data
-            __progress__('Stage execution results:')
-            for key, val in stage.items():
-                if '_|-' in key:
-                    __progress__({'error': {key: val}}, outputter='highstate')
-                else:
-                    __progress__({key: val}, outputter='highstate')
-        elif isinstance(stage, list):
-            # This is a stage
-            if stage_num == 0:
-                __progress__('Executing the following Over State:')
-            else:
-                __progress__('Executed Stage:')
-            __progress__(stage, outputter='overstatestage')
-            stage_num += 1
-    return overstate.over_run
+    minion = salt.minion.MasterMinion(__opts__)
+    minion.functions['state.pause'](jid, state_id, duration)
 
 
-def orchestrate(mods, saltenv='base', test=None, exclude=None, pillar=None):
+set_pause = salt.utils.functools.alias_function(pause, 'set_pause')
+
+
+def resume(jid, state_id=None):
+    '''
+    Remove a pause from a jid, allowing it to continue
+    '''
+    minion = salt.minion.MasterMinion(__opts__)
+    minion.functions['state.resume'](jid, state_id)
+
+
+rm_pause = salt.utils.functools.alias_function(resume, 'rm_pause')
+
+
+def soft_kill(jid, state_id=None):
+    '''
+    Set up a state run to die before executing the given state id,
+    this instructs a running state to safely exit at a given
+    state id. This needs to pass in the jid of the running state.
+    If a state_id is not passed then the jid referenced will be safely exited
+    at the beginning of the next state run.
+    '''
+    minion = salt.minion.MasterMinion(__opts__)
+    minion.functions['state.soft_kill'](jid, state_id)
+
+
+def orchestrate(mods,
+                saltenv='base',
+                test=None,
+                exclude=None,
+                pillar=None,
+                pillarenv=None,
+                pillar_enc=None,
+                orchestration_jid=None):
     '''
     .. versionadded:: 0.17.0
 
@@ -82,7 +68,7 @@ def orchestrate(mods, saltenv='base', test=None, exclude=None, pillar=None):
 
     .. seealso:: More Orchestrate documentation
 
-        * :ref:`Full Orchestrate Tutorial <orchestrate-tutorial>`
+        * :ref:`Full Orchestrate Tutorial <orchestrate-runner>`
         * :py:mod:`Docs for the master-side state module <salt.states.saltmod>`
 
     CLI Examples:
@@ -91,6 +77,7 @@ def orchestrate(mods, saltenv='base', test=None, exclude=None, pillar=None):
 
         salt-run state.orchestrate webserver
         salt-run state.orchestrate webserver saltenv=dev test=True
+        salt-run state.orchestrate webserver saltenv=dev pillarenv=aws
 
     .. versionchanged:: 2014.1.1
 
@@ -99,6 +86,21 @@ def orchestrate(mods, saltenv='base', test=None, exclude=None, pillar=None):
     .. versionchanged:: 2014.7.0
 
         Runner uses the pillar variable
+
+    .. versionchanged:: develop
+
+        Runner uses the pillar_enc variable that allows renderers to render the pillar.
+        This is usable when supplying the contents of a file as pillar, and the file contains
+        gpg-encrypted entries.
+
+    .. seealso:: GPG renderer documentation
+
+    CLI Examples:
+
+    .. code-block:: bash
+
+       salt-run state.orchestrate webserver pillar_enc=gpg pillar="$(cat somefile.json)"
+
     '''
     if pillar is not None and not isinstance(pillar, dict):
         raise SaltInvocationError(
@@ -106,44 +108,158 @@ def orchestrate(mods, saltenv='base', test=None, exclude=None, pillar=None):
         )
     __opts__['file_client'] = 'local'
     minion = salt.minion.MasterMinion(__opts__)
+
+    if pillarenv is None and 'pillarenv' in __opts__:
+        pillarenv = __opts__['pillarenv']
+    if saltenv is None and 'saltenv' in __opts__:
+        saltenv = __opts__['saltenv']
+    if orchestration_jid is None:
+        orchestration_jid = salt.utils.jid.gen_jid(__opts__)
+
     running = minion.functions['state.sls'](
             mods,
-            saltenv,
             test,
             exclude,
-            pillar=pillar)
-    ret = {minion.opts['id']: running}
-    __progress__(ret, outputter='highstate')
+            pillar=pillar,
+            saltenv=saltenv,
+            pillarenv=pillarenv,
+            pillar_enc=pillar_enc,
+            __pub_jid=orchestration_jid,
+            orchestration_jid=orchestration_jid)
+    ret = {'data': {minion.opts['id']: running}, 'outputter': 'highstate'}
+    res = __utils__['state.check_result'](ret['data'])
+    if res:
+        ret['retcode'] = 0
+    else:
+        ret['retcode'] = 1
     return ret
 
+
 # Aliases for orchestrate runner
-orch = orchestrate  # pylint: disable=invalid-name
-sls = orchestrate  # pylint: disable=invalid-name
+orch = salt.utils.functools.alias_function(orchestrate, 'orch')
+sls = salt.utils.functools.alias_function(orchestrate, 'sls')
 
 
-def show_stages(saltenv='base', os_fn=None):
+def orchestrate_single(fun, name, test=None, queue=False, pillar=None, **kwargs):
     '''
-    .. versionadded:: 0.11.0
+    Execute a single state orchestration routine
 
-    Display the OverState's stage data
+    .. versionadded:: 2015.5.0
 
-    CLI Examples:
+    CLI Example:
 
     .. code-block:: bash
 
-        salt-run state.show_stages
-        salt-run state.show_stages saltenv=dev /root/overstate.sls
+        salt-run state.orchestrate_single fun=salt.wheel name=key.list_all
     '''
-    overstate = salt.overstate.OverState(__opts__, saltenv, os_fn)
-    __progress__(overstate.over, outputter='overstatestage')
-    return overstate.over
+    if pillar is not None and not isinstance(pillar, dict):
+        raise SaltInvocationError(
+            'Pillar data must be formatted as a dictionary'
+        )
+    __opts__['file_client'] = 'local'
+    minion = salt.minion.MasterMinion(__opts__)
+    running = minion.functions['state.single'](
+            fun,
+            name,
+            test=None,
+            queue=False,
+            pillar=pillar,
+            **kwargs)
+    ret = {minion.opts['id']: running}
+    __jid_event__.fire_event({'data': ret, 'outputter': 'highstate'}, 'progress')
+    return ret
 
 
-def event(tagmatch='*', count=-1, quiet=False, sock_dir=None, pretty=False):
+def orchestrate_high(data, test=None, queue=False, pillar=None, **kwargs):
+    '''
+    Execute a single state orchestration routine
+
+    .. versionadded:: 2015.5.0
+
+    CLI Example:
+
+    .. code-block:: bash
+
+        salt-run state.orchestrate_high '{
+            stage_one:
+                {salt.state: [{tgt: "db*"}, {sls: postgres_setup}]},
+            stage_two:
+                {salt.state: [{tgt: "web*"}, {sls: apache_setup}, {
+                    require: [{salt: stage_one}],
+                }]},
+            }'
+    '''
+    if pillar is not None and not isinstance(pillar, dict):
+        raise SaltInvocationError(
+            'Pillar data must be formatted as a dictionary'
+        )
+    __opts__['file_client'] = 'local'
+    minion = salt.minion.MasterMinion(__opts__)
+    running = minion.functions['state.high'](
+            data,
+            test=None,
+            queue=False,
+            pillar=pillar,
+            **kwargs)
+    ret = {minion.opts['id']: running}
+    __jid_event__.fire_event({'data': ret, 'outputter': 'highstate'}, 'progress')
+    return ret
+
+
+def orchestrate_show_sls(mods,
+                         saltenv='base',
+                         test=None,
+                         queue=False,
+                         pillar=None,
+                         pillarenv=None,
+                         pillar_enc=None):
+    '''
+    Display the state data from a specific sls, or list of sls files, after
+    being render using the master minion.
+
+    Note, the master minion adds a "_master" suffix to it's minion id.
+
+    .. seealso:: The state.show_sls module function
+
+    CLI Example:
+    .. code-block:: bash
+
+        salt-run state.orch_show_sls my-orch-formula.my-orch-state 'pillar={ nodegroup: ng1 }'
+    '''
+    if pillar is not None and not isinstance(pillar, dict):
+        raise SaltInvocationError(
+            'Pillar data must be formatted as a dictionary')
+
+    __opts__['file_client'] = 'local'
+    minion = salt.minion.MasterMinion(__opts__)
+    running = minion.functions['state.show_sls'](
+        mods,
+        test,
+        queue,
+        pillar=pillar,
+        pillarenv=pillarenv,
+        pillar_enc=pillar_enc,
+        saltenv=saltenv)
+
+    ret = {minion.opts['id']: running}
+    return ret
+
+
+orch_show_sls = salt.utils.functools.alias_function(orchestrate_show_sls, 'orch_show_sls')
+
+
+def event(tagmatch='*',
+          count=-1,
+          quiet=False,
+          sock_dir=None,
+          pretty=False,
+          node='master'):
     r'''
     Watch Salt's event bus and block until the given tag is matched
 
     .. versionadded:: 2014.7.0
+    .. versionchanged:: 2019.2.0
+        ``tagmatch`` can now be either a glob or regular expression.
 
     This is useful for utilizing Salt's event bus from shell scripts or for
     taking simple actions directly from the CLI.
@@ -151,13 +267,15 @@ def event(tagmatch='*', count=-1, quiet=False, sock_dir=None, pretty=False):
     Enable debug logging to see ignored events.
 
     :param tagmatch: the event is written to stdout for each tag that matches
-        this pattern; uses the same matching semantics as Salt's Reactor.
+        this glob or regular expression.
     :param count: this number is decremented for each event that matches the
         ``tagmatch`` parameter; pass ``-1`` to listen forever.
     :param quiet: do not print to stdout; just block
     :param sock_dir: path to the Salt master's event socket file.
     :param pretty: Output the JSON all on a single line if ``False`` (useful
         for shell tools); pretty-print the JSON output if ``True``.
+    :param node: Watch the minion-side or master-side event bus.
+        .. versionadded:: 2016.3.0
 
     CLI Examples:
 
@@ -176,125 +294,20 @@ def event(tagmatch='*', count=-1, quiet=False, sock_dir=None, pretty=False):
         # Watch the event bus forever in a shell while-loop.
         salt-run state.event | while read -r tag data; do
             echo $tag
-            echo $data | jq -colour-output .
+            echo $data | jq --color-output .
         done
 
-    The following example monitors Salt's event bus in a background process
-    watching for returns for a given job. Requires a POSIX environment and jq
-    <http://stedolan.github.io/jq/>.
+    .. seealso::
 
-    .. code-block:: bash
-
-        #!/bin/sh
-        # Usage: ./eventlisten.sh '*' test.sleep 10
-
-        # Mimic fnmatch from the Python stdlib.
-        fnmatch() { case "$2" in $1) return 0 ;; *) return 1 ;; esac ; }
-        count() { printf '%s\n' "$#" ; }
-
-        listen() {
-            events='events'
-            mkfifo $events
-            exec 3<>$events     # Hold the fd open.
-
-            # Start listening to events before starting the command to avoid race
-            # conditions.
-            salt-run state.event count=-1 >&3 &
-            events_pid=$!
-
-            (
-                timeout=$(( 60 * 60 ))
-                sleep $timeout
-                kill -s USR2 $$
-            ) &
-            timeout_pid=$!
-
-            # Give the runner a few to connect to the event bus.
-            printf 'Subscribing to the Salt event bus...\n'
-            sleep 4
-
-            trap '
-                excode=$?; trap - EXIT;
-                exec 3>&-
-                kill '"${timeout_pid}"'
-                kill '"${events_pid}"'
-                rm '"${events}"'
-                exit
-                echo $excode
-            ' INT TERM EXIT
-
-            trap '
-                printf '\''Timeout reached; exiting.\n'\''
-                exit 4
-            ' USR2
-
-            # Run the command and get the JID.
-            jid=$(salt --async "$@")
-            jid="${jid#*: }"    # Remove leading text up to the colon.
-
-            # Create the event tags to listen for.
-            start_tag="salt/job/${jid}/new"
-            ret_tag="salt/job/${jid}/ret/*"
-
-            # ``read`` will block when no events are going through the bus.
-            printf 'Waiting for tag %s\n' "$ret_tag"
-            while read -r tag data; do
-                if fnmatch "$start_tag" "$tag"; then
-                    minions=$(printf '%s\n' "${data}" | jq -r '.["minions"][]')
-                    num_minions=$(count $minions)
-                    printf 'Waiting for %s minions.\n' "$num_minions"
-                    continue
-                fi
-
-                if fnmatch "$ret_tag" "$tag"; then
-                    mid="${tag##*/}"
-                    printf 'Got return for %s.\n' "$mid"
-                    printf 'Pretty-printing event: %s\n' "$tag"
-                    printf '%s\n' "$data" | jq .
-
-                    minions="$(printf '%s\n' "$minions" | sed -e '/'"$mid"'/d')"
-                    num_minions=$(count $minions)
-                    if [ $((num_minions)) -eq 0 ]; then
-                        printf 'All minions returned.\n'
-                        break
-                    else
-                        printf 'Remaining minions: %s\n' "$num_minions"
-                    fi
-                else
-                    printf 'Skipping tag: %s\n' "$tag"
-                    continue
-                fi
-            done <&3
-        }
-
-        listen "$@"
+        See :blob:`tests/eventlisten.sh` for an example of usage within a shell
+        script.
     '''
-    sevent = salt.utils.event.get_event(
-            'master',
-            sock_dir or __opts__['sock_dir'],
-            __opts__['transport'],
-            opts=__opts__)
+    statemod = salt.loader.raw_mod(__opts__, 'state', None)
 
-    while True:
-        ret = sevent.get_event(full=True)
-        if ret is None:
-            continue
-
-        if fnmatch.fnmatch(ret['tag'], tagmatch):
-            if not quiet:
-                print('{0}\t{1}'.format(
-                    ret['tag'],
-                    json.dumps(
-                        ret['data'],
-                        sort_keys=pretty,
-                        indent=None if not pretty else 4)))
-                sys.stdout.flush()
-
-            count -= 1
-            LOGGER.debug('Remaining event matches: {0}'.format(count))
-
-            if count == 0:
-                break
-        else:
-            LOGGER.debug('Skipping event tag: {0}'.format(ret['tag']))
-            continue
+    return statemod['state.event'](
+               tagmatch=tagmatch,
+               count=count,
+               quiet=quiet,
+               sock_dir=sock_dir,
+               pretty=pretty,
+               node=node)

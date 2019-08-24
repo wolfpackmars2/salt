@@ -9,9 +9,11 @@ only addition/deletion of licenses is supported.
 .. code-block:: yaml
 
     key:
-      powerpath:
-        - license_present
+      powerpath.license_present: []
 '''
+
+# Import Python libs
+from __future__ import absolute_import, print_function, unicode_literals
 
 
 def license_present(name):
@@ -20,7 +22,7 @@ def license_present(name):
     on the host.
 
     name
-        The licnese key to ensure is present
+        The license key to ensure is present
     '''
     ret = {'name': name,
            'changes': {},
@@ -62,7 +64,7 @@ def license_absent(name):
     on the host.
 
     name
-        The licnese key to ensure is absent
+        The license key to ensure is absent
     '''
     ret = {'name': name,
            'changes': {},

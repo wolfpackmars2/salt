@@ -5,7 +5,12 @@
 
     .. versionadded:: 0.17.0
 
-    This module provides a `Sentry`_ logging handler.
+    This module provides a `Sentry`_ logging handler. Sentry is an open source
+    error tracking platform that provides deep context about exceptions that
+    happen in production. Details about stack traces along with the context
+    variables available at the time of the exception are easily browsable and
+    filterable from the online interface. For more details please see
+    `Sentry`_.
 
     .. admonition:: Note
 
@@ -13,7 +18,8 @@
         logging handler to be available.
 
     Configuring the python `Sentry`_ client, `Raven`_, should be done under the
-    ``sentry_handler`` configuration key.
+    ``sentry_handler`` configuration key. Additional `context` may be provided
+    for corresponding grain item(s).
     At the bare minimum, you need to define the `DSN`_. As an example:
 
     .. code-block:: yaml
@@ -33,7 +39,17 @@
           project: app-id
           public_key: deadbeefdeadbeefdeadbeefdeadbeef
           secret_key: beefdeadbeefdeadbeefdeadbeefdead
+          context:
+            - os
+            - master
+            - saltversion
+            - cpuarch
+            - ec2.tags.environment
 
+    .. admonition:: Note
+
+        The ``public_key`` and ``secret_key`` variables are not supported with
+        Sentry > 3.0. The `DSN`_ key should be used instead.
 
     All the client configuration keys are supported, please see the
     `Raven client documentation`_.
@@ -64,17 +80,19 @@
 
 
 
-    .. _`DSN`: http://raven.readthedocs.org/en/latest/config/index.html#the-sentry-dsn
+    .. _`DSN`: https://raven.readthedocs.io/en/latest/config/index.html#the-sentry-dsn
     .. _`Sentry`: https://getsentry.com
-    .. _`Raven`: http://raven.readthedocs.org
-    .. _`Raven client documentation`: http://raven.readthedocs.org/en/latest/config/index.html#client-arguments
+    .. _`Raven`: https://raven.readthedocs.io
+    .. _`Raven client documentation`: https://raven.readthedocs.io/en/latest/config/index.html#client-arguments
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 
 # Import python libs
 import logging
+import re
 
 # Import salt libs
+import salt.loader
 from salt.log import LOG_LEVELS
 
 # Import 3rd party libs
@@ -86,6 +104,8 @@ except ImportError:
     HAS_RAVEN = False
 
 log = logging.getLogger(__name__)
+__grains__ = {}
+__salt__ = {}
 
 # Define the module's virtual name
 __virtualname__ = 'sentry'
@@ -98,40 +118,43 @@ def __virtual__():
 
 
 def setup_handlers():
+    '''
+    sets up the sentry handler
+    '''
+    __grains__ = salt.loader.grains(__opts__)
+    __salt__ = salt.loader.minion_mods(__opts__)
     if 'sentry_handler' not in __opts__:
         log.debug('No \'sentry_handler\' key was found in the configuration')
         return False
-
     options = {}
     dsn = get_config_value('dsn')
     if dsn is not None:
         try:
-            dsn_config = raven.load(dsn)
-            options.update({
-                'project': dsn_config['SENTRY_PROJECT'],
-                'servers': dsn_config['SENTRY_SERVERS'],
-                'public_key': dsn_config['SENTRY_PUBLIC_KEY'],
-                'private_key': dsn_config['SENTRY_SECRET_KEY']
-            })
+            # support raven ver 5.5.0
+            from raven.transport import TransportRegistry, default_transports
+            from raven.utils.urlparse import urlparse
+            transport_registry = TransportRegistry(default_transports)
+            url = urlparse(dsn)
+            if not transport_registry.supported_scheme(url.scheme):
+                raise ValueError('Unsupported Sentry DSN scheme: {0}'.format(url.scheme))
         except ValueError as exc:
             log.info(
-                'Raven failed to parse the configuration provided '
-                'DSN: {0}'.format(exc)
+                'Raven failed to parse the configuration provided DSN: %s', exc
             )
 
-    # Allow options to be overridden if previously parsed, or define them
-    for key in ('project', 'servers', 'public_key', 'private_key'):
-        config_value = get_config_value(key)
-        if config_value is None and key not in options:
-            log.debug(
-                'The required \'sentry_handler\' configuration key, '
-                '{0!r}, is not properly configured. Not configuring '
-                'the sentry logging handler.'.format(key)
-            )
-            return
-        elif config_value is None:
-            continue
-        options[key] = config_value
+    if not dsn:
+        for key in ('project', 'servers', 'public_key', 'secret_key'):
+            config_value = get_config_value(key)
+            if config_value is None and key not in options:
+                log.debug(
+                    'The required \'sentry_handler\' configuration key, '
+                    '\'%s\', is not properly configured. Not configuring '
+                    'the sentry logging handler.', key
+                )
+                return
+            elif config_value is None:
+                continue
+            options[key] = config_value
 
     # site: An optional, arbitrary string to identify this client installation.
     options.update({
@@ -178,17 +201,42 @@ def setup_handlers():
     })
 
     client = raven.Client(**options)
-
+    context = get_config_value('context')
+    context_dict = {}
+    if context is not None:
+        for tag in context:
+            try:
+                tag_value = __grains__[tag]
+            except KeyError:
+                log.debug('Sentry tag \'%s\' not found in grains.', tag)
+                continue
+            if tag_value:
+                context_dict[tag] = tag_value
+        if context_dict:
+            client.context.merge({'tags': context_dict})
     try:
         handler = SentryHandler(client)
+
+        exclude_patterns = get_config_value('exclude_patterns', None)
+        if exclude_patterns:
+            filter_regexes = [re.compile(pattern) for pattern in exclude_patterns]
+
+            class FilterExcludedMessages(object):
+                @staticmethod
+                def filter(record):
+                    m = record.getMessage()
+                    return not any(regex.search(m) for regex in filter_regexes)
+
+            handler.addFilter(FilterExcludedMessages())
+
         handler.setLevel(LOG_LEVELS[get_config_value('log_level', 'error')])
         return handler
     except ValueError as exc:
-        log.debug(
-            'Failed to setup the sentry logging handler: {0}'.format(exc),
-            exc_info=exc
-        )
+        log.debug('Failed to setup the sentry logging handler', exc_info=True)
 
 
 def get_config_value(name, default=None):
+    '''
+    returns a configuration option for the sentry_handler
+    '''
     return __opts__['sentry_handler'].get(name, default)

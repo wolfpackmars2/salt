@@ -25,7 +25,8 @@ using the built-in Python renderer with the exception that pyobjects provides
 you with an object based interface for generating state data.
 
 Creating state data
-^^^^^^^^^^^^^^^^^^^
+-------------------
+
 Pyobjects takes care of creating an object for each of the available states on
 the minion. Each state is represented by an object that is the CamelCase
 version of its name (i.e. ``File``, ``Service``, ``User``, etc), and these
@@ -41,7 +42,8 @@ Some examples:
 * ``ssh_known_hosts`` becomes ``SshKnownHosts``
 
 Context Managers and requisites
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-------------------------------
+
 How about something a little more complex. Here we're going to get into the
 core of how to use pyobjects to write states.
 
@@ -106,7 +108,7 @@ manager to automatically have their ``watch_in`` set to
 ``Service("my-service")``.
 
 Including and Extending
-^^^^^^^^^^^^^^^^^^^^^^^
+-----------------------
 
 To include other states use the ``include()`` function. It takes one name per
 state to include.
@@ -126,7 +128,8 @@ a state.
 
 
 Importing from other state files
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+--------------------------------
+
 Like any Python project that grows you will likely reach a point where you want
 to create reusability in your state tree and share objects between state files,
 Map Data (described below) is a perfect example of this.
@@ -138,8 +141,8 @@ renderer will take care of fetching the file for you, parsing it with all of
 the pyobjects features available and then place the requested objects in the
 global scope of the template being rendered.
 
-This works for both types of import statements, ``import X`` and
-``from X import Y``.
+This works for all types of import statements; ``import X``,
+``from X import Y``, and ``from X import Y as Z``.
 
 .. code-block:: python
    :linenos:
@@ -148,20 +151,20 @@ This works for both types of import statements, ``import X`` and
 
     import salt://myfile.sls
     from salt://something/data.sls import Object
+    from salt://something/data.sls import Object as Other
 
 
 See the Map Data section for a more practical use.
 
 Caveats:
 
-* You cannot use the ``as`` syntax, you can only import objects using their
-  existing name.
-
 * Imported objects are ALWAYS put into the global scope of your template,
   regardless of where your import statement is.
 
+
 Salt object
-^^^^^^^^^^^
+-----------
+
 In the spirit of the object interface for creating state data pyobjects also
 provides a simple object interface to the ``__salt__`` object.
 
@@ -179,7 +182,8 @@ The following lines are functionally equivalent:
     ret = __salt__['cmd.run'](bar)
 
 Pillar, grain, mine & config data
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+---------------------------------
+
 Pyobjects provides shortcut functions for calling ``pillar.get``,
 ``grains.get``, ``mine.get`` & ``config.get`` on the ``__salt__`` object. This
 helps maintain the readability of your state files.
@@ -208,7 +212,8 @@ The following pairs of lines are functionally equivalent:
 
 
 Map Data
-^^^^^^^^
+--------
+
 When building complex states or formulas you often need a way of building up a
 map of data based on grain data. The most common use of this is tracking the
 package and service name differences between distributions.
@@ -224,20 +229,56 @@ different grain matches.
 
     class Samba(Map):
         merge = 'samba:lookup'
+        # NOTE: priority is new to 2017.7.0
+        priority = ('os_family', 'os')
+
+        class Ubuntu:
+            __grain__ = 'os'
+            service = 'smbd'
 
         class Debian:
             server = 'samba'
             client = 'samba-client'
             service = 'samba'
 
-        class Ubuntu:
-            __grain__ = 'os'
-            service = 'smbd'
-
-        class RedHat:
+        class RHEL:
+            __match__ = 'RedHat'
             server = 'samba'
             client = 'samba'
             service = 'smb'
+
+.. note::
+    By default, the ``os_family`` grain will be used as the target for
+    matching. This can be overridden by specifying a ``__grain__`` attribute.
+
+    If a ``__match__`` attribute is defined for a given class, then that value
+    will be matched against the targeted grain, otherwise the class name's
+    value will be be matched.
+
+    Given the above example, the following is true:
+
+    1. Minions with an ``os_family`` of **Debian** will be assigned the
+       attributes defined in the **Debian** class.
+    2. Minions with an ``os`` grain of **Ubuntu** will be assigned the
+       attributes defined in the **Ubuntu** class.
+    3. Minions with an ``os_family`` grain of **RedHat** will be assigned the
+       attributes defined in the **RHEL** class.
+
+    That said, sometimes a minion may match more than one class. For instance,
+    in the above example, Ubuntu minions will match both the **Debian** and
+    **Ubuntu** classes, since Ubuntu has an ``os_family`` grain of **Debian**
+    and an ``os`` grain of **Ubuntu**. As of the 2017.7.0 release, the order is
+    dictated by the order of declaration, with classes defined later overriding
+    earlier ones. Additionally, 2017.7.0 adds support for explicitly defining
+    the ordering using an optional attribute called ``priority``.
+
+    Given the above example, ``os_family`` matches will be processed first,
+    with ``os`` matches processed after. This would have the effect of
+    assigning ``smbd`` as the ``service`` attribute on Ubuntu minions. If the
+    ``priority`` item was not defined, or if the order of the items in the
+    ``priority`` tuple were reversed, Ubuntu minions would have a ``service``
+    attribute of ``samba``, since ``os_family`` matches would have been
+    processed second.
 
 To use this new data you can import it into your state file and then access
 your attributes. To access the data in the map you simply access the attribute
@@ -254,25 +295,27 @@ file ``samba/map.sls``, you could do the following.
     with Pkg.installed("samba", names=[Samba.server, Samba.client]):
         Service.running("samba", name=Samba.service)
 
-TODO
-^^^^
-* Interface for working with reactor files
 '''
+# TODO: Interface for working with reactor files
 
-from __future__ import absolute_import
-
+# Import Python Libs
+from __future__ import absolute_import, print_function, unicode_literals
 import logging
+import os
 import re
-from salt.ext.six import exec_
 
-import salt.utils
-from salt.loader import _create_loader
+# Import Salt Libs
+from salt.ext import six
+import salt.utils.files
+import salt.loader
 from salt.fileclient import get_file_client
 from salt.utils.pyobjects import Registry, StateFactory, SaltObject, Map
+from salt.ext import six
 
 # our import regexes
-FROM_RE = r'^\s*from\s+(salt:\/\/.*)\s+import (.*)$'
-IMPORT_RE = r'^\s*import\s+(salt:\/\/.*)$'
+FROM_RE = re.compile(r'^\s*from\s+(salt:\/\/.*)\s+import (.*)$')
+IMPORT_RE = re.compile(r'^\s*import\s+(salt:\/\/.*)$')
+FROM_AS_RE = re.compile(r'^(.*) as (.*)$')
 
 log = logging.getLogger(__name__)
 
@@ -282,33 +325,42 @@ except NameError:
     __context__ = {}
 
 
+class PyobjectsModule(object):
+    '''This provides a wrapper for bare imports.'''
+
+    def __init__(self, name, attrs):
+        self.name = name
+        self.__dict__ = attrs
+
+    def __repr__(self):
+        return "<module '{0!s}' (pyobjects)>".format(self.name)
+
+
 def load_states():
     '''
     This loads our states into the salt __context__
     '''
     states = {}
 
-    # the loader expects to find pillar & grian data
-    __opts__['grains'] = __grains__
+    # the loader expects to find pillar & grain data
+    __opts__['grains'] = salt.loader.grains(__opts__)
     __opts__['pillar'] = __pillar__
+    lazy_utils = salt.loader.utils(__opts__)
+    lazy_funcs = salt.loader.minion_mods(__opts__, utils=lazy_utils)
+    lazy_serializers = salt.loader.serializers(__opts__)
+    lazy_states = salt.loader.states(__opts__,
+            lazy_funcs,
+            lazy_utils,
+            lazy_serializers)
 
-    # we need to build our own loader so that we can process the virtual names
-    # in our own way.
-    load = _create_loader(__opts__, 'states', 'states')
-    load.load_modules()
-    for mod in load.modules:
-        module_name = mod.__name__.rsplit('.', 1)[-1]
-
-        (virtual_ret, virtual_name, _) = load.process_virtual(mod, module_name)
-
-        # if the module returned a True value and a new name use that
-        # otherwise use the default module name
-        if virtual_ret and virtual_name != module_name:
-            module_name = virtual_name
-
-        # load our functions from the module, pass None in as the module_name
-        # so that our function names come back unprefixed
-        states[module_name] = load.load_functions(mod, None)
+    # TODO: some way to lazily do this? This requires loading *all* state modules
+    for key, func in six.iteritems(lazy_states):
+        if '.' not in key:
+            continue
+        mod_name, func_name = key.split('.', 1)
+        if mod_name not in states:
+            states[mod_name] = {}
+        states[mod_name][func_name] = func
 
     __context__['pyobjects_states'] = states
 
@@ -318,7 +370,6 @@ def render(template, saltenv='base', sls='', salt_data=True, **kwargs):
         load_states()
 
     # these hold the scope that our sls file will be executed with
-    _locals = {}
     _globals = {}
 
     # create our StateFactory objects
@@ -337,7 +388,7 @@ def render(template, saltenv='base', sls='', salt_data=True, **kwargs):
             mod,
             valid_funcs
         )
-        exec_(mod_cmd, mod_globals, mod_locals)
+        six.exec_(mod_cmd, mod_globals, mod_locals)
 
         _globals[mod_camel] = mod_locals[mod_camel]
 
@@ -382,58 +433,78 @@ def render(template, saltenv='base', sls='', salt_data=True, **kwargs):
     # so that they may bring in objects from other files. while we do this we
     # disable the registry since all we're looking for here is python objects,
     # not salt state data
-    template_data = []
     Registry.enabled = False
-    for line in template.readlines():
-        line = line.rstrip('\r\n')
-        matched = False
-        for RE in (IMPORT_RE, FROM_RE):
-            matches = re.match(RE, line)
-            if not matches:
-                continue
 
-            import_file = matches.group(1).strip()
-            try:
-                imports = matches.group(2).split(',')
-            except IndexError:
-                # if we don't have a third group in the matches object it means
-                # that we're importing everything
-                imports = None
+    def process_template(template):
+        template_data = []
+        # Do not pass our globals to the modules we are including and keep the root _globals untouched
+        template_globals = dict(_globals)
+        for line in template.readlines():
+            line = line.rstrip('\r\n')
+            matched = False
+            for RE in (IMPORT_RE, FROM_RE):
+                matches = RE.match(line)
+                if not matches:
+                    continue
 
-            state_file = client.cache_file(import_file, saltenv)
-            if not state_file:
-                raise ImportError("Could not find the file {0!r}".format(import_file))
+                import_file = matches.group(1).strip()
+                try:
+                    imports = matches.group(2).split(',')
+                except IndexError:
+                    # if we don't have a third group in the matches object it means
+                    # that we're importing everything
+                    imports = None
 
-            with salt.utils.fopen(state_file) as f:
-                state_contents = f.read()
+                state_file = client.cache_file(import_file, saltenv)
+                if not state_file:
+                    raise ImportError(
+                        'Could not find the file \'{0}\''.format(import_file)
+                    )
 
-            state_locals = {}
-            exec_(state_contents, _globals, state_locals)
+                with salt.utils.files.fopen(state_file) as state_fh:
+                    state_contents, state_globals = process_template(state_fh)
+                six.exec_(state_contents, state_globals)
 
-            if imports is None:
-                imports = list(state_locals.keys())
+                # if no imports have been specified then we are being imported as: import salt://foo.sls
+                # so we want to stick all of the locals from our state file into the template globals
+                # under the name of the module -> i.e. foo.MapClass
+                if imports is None:
+                    import_name = os.path.splitext(os.path.basename(state_file))[0]
+                    template_globals[import_name] = PyobjectsModule(import_name, state_globals)
+                else:
+                    for name in imports:
+                        name = alias = name.strip()
 
-            for name in imports:
-                name = name.strip()
-                if name not in state_locals:
-                    raise ImportError("{0!r} was not found in {1!r}".format(
-                        name,
-                        import_file
-                    ))
-                _globals[name] = state_locals[name]
+                        matches = FROM_AS_RE.match(name)
+                        if matches is not None:
+                            name = matches.group(1).strip()
+                            alias = matches.group(2).strip()
 
-            matched = True
-            break
+                        if name not in state_globals:
+                            raise ImportError(
+                                '\'{0}\' was not found in \'{1}\''.format(
+                                    name,
+                                    import_file
+                                )
+                            )
+                        template_globals[alias] = state_globals[name]
 
-        if not matched:
-            template_data.append(line)
+                matched = True
+                break
 
-    final_template = "\n".join(template_data)
+            if not matched:
+                template_data.append(line)
+
+        return "\n".join(template_data), template_globals
+
+    # process the template that triggered the render
+    final_template, final_globals = process_template(template)
+    _globals.update(final_globals)
 
     # re-enable the registry
     Registry.enabled = True
 
     # now exec our template using our created scopes
-    exec_(final_template, _globals, _locals)
+    six.exec_(final_template, _globals)
 
     return Registry.salt_data()

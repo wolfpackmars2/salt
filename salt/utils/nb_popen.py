@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 '''
-    :codeauthor: :email:`Pedro Algarvio (pedro@algarvio.me)`
+    :codeauthor: Pedro Algarvio (pedro@algarvio.me)
 
 
     salt.utils.nb_popen
@@ -13,7 +13,7 @@
 
         http://code.activestate.com/recipes/440554/
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals, print_function
 
 # Import python libs
 import os
@@ -25,11 +25,13 @@ import logging
 import tempfile
 import subprocess
 
-if subprocess.mswindows:
+mswindows = (sys.platform == "win32")
+
+try:
     from win32file import ReadFile, WriteFile
     from win32pipe import PeekNamedPipe
     import msvcrt
-else:
+except ImportError:
     import fcntl
 
 log = logging.getLogger(__name__)
@@ -59,6 +61,7 @@ class NonBlockingPopen(subprocess.Popen):
             'stderr_logger_name', self._stderr_logger_name_
         )
 
+        logging_command = kwargs.pop('logging_command', None)
         stderr = kwargs.get('stderr', None)
 
         super(NonBlockingPopen, self).__init__(*args, **kwargs)
@@ -88,7 +91,9 @@ class NonBlockingPopen(subprocess.Popen):
         )
 
         log.info(
-            'Running command under pid {0}: {1!r}'.format(self.pid, *args)
+            'Running command under pid %s: \'%s\'',
+            self.pid,
+            args if logging_command is None else logging_command
         )
 
     def recv(self, maxsize=None):
@@ -111,7 +116,7 @@ class NonBlockingPopen(subprocess.Popen):
         getattr(self, which).close()
         setattr(self, which, None)
 
-    if subprocess.mswindows:
+    if mswindows:
         def send(self, input):
             if not self.stdin:
                 return None

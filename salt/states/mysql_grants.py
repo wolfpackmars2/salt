@@ -20,6 +20,10 @@ specification as defined in the MySQL documentation:
 * db_name.tbl_name
 * etc...
 
+This state is not able to set password for the permission from the
+specified host. See :py:mod:`salt.states.mysql_user` for further
+instructions.
+
 .. code-block:: yaml
 
    frank_exampledb:
@@ -41,7 +45,7 @@ specification as defined in the MySQL documentation:
        - database: somedb.sometable
        - user: joe
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 
 import sys
 

@@ -5,19 +5,25 @@ Connection module for Amazon CloudWatch
 .. versionadded:: 2014.7.0
 
 :configuration: This module accepts explicit credentials but can also utilize
-    IAM roles assigned to the instance trough Instance Profiles. Dynamic
+    IAM roles assigned to the instance through Instance Profiles. Dynamic
     credentials are then automatically obtained from AWS API and no further
-    configuration is necessary. More Information available at::
+    configuration is necessary. More Information available at:
 
-       http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html
+    .. code-block:: text
+
+        http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html
 
     If IAM roles are not used you need to specify them either in a pillar or
-    in the minion's config file::
+    in the minion's config file:
+
+    .. code-block:: yaml
 
         cloudwatch.keyid: GKTADJGHEIQSXMKKRBJ08H
         cloudwatch.key: askdjghsdfjkghWupUjasdflkdfklgjsdfjajkghs
 
-    A region may also be specified in the configuration::
+    A region may also be specified in the configuration:
+
+    .. code-block:: yaml
 
         cloudwatch.region: us-east-1
 
@@ -26,6 +32,8 @@ Connection module for Amazon CloudWatch
     It's also possible to specify key, keyid and region via a profile, either
     as a passed in dict, or as a string to pull from pillars or minion config:
 
+    .. code-block:: yaml
+
         myprofile:
             keyid: GKTADJGHEIQSXMKKRBJ08H
             key: askdjghsdfjkghWupUjasdflkdfklgjsdfjajkghs
@@ -33,14 +41,20 @@ Connection module for Amazon CloudWatch
 
 :depends: boto
 '''
-from __future__ import absolute_import
+# keep lint from choking on _get_conn and _cache_id
+#pylint: disable=E0602
+
+from __future__ import absolute_import, print_function, unicode_literals
 
 # Import Python libs
 import logging
-import json
-import yaml
+import yaml  # pylint: disable=blacklisted-import
 
+# Import Salt libs
+from salt.ext import six
+import salt.utils.json
 import salt.utils.odict as odict
+import salt.utils.versions
 
 log = logging.getLogger(__name__)
 
@@ -55,16 +69,17 @@ try:
 except ImportError:
     HAS_BOTO = False
 
-from salt.ext.six import string_types
-
 
 def __virtual__():
     '''
     Only load if boto libraries exist.
     '''
-    if not HAS_BOTO:
-        return False
-    return True
+    has_boto_reqs = salt.utils.versions.check_boto_reqs(check_boto3=False)
+    if has_boto_reqs is True:
+        __utils__['boto.assign_funcs'](__name__, 'cloudwatch',
+                                       module='ec2.cloudwatch',
+                                       pack=__salt__)
+    return has_boto_reqs
 
 
 def get_alarm(name, region=None, key=None, keyid=None, profile=None):
@@ -75,43 +90,38 @@ def get_alarm(name, region=None, key=None, keyid=None, profile=None):
 
         salt myminion boto_cloudwatch.get_alarm myalarm region=us-east-1
     '''
-    conn = _get_conn(region, key, keyid, profile)
-    if not conn:
-        return None
+    conn = _get_conn(region=region, key=key, keyid=keyid, profile=profile)
+
     alarms = conn.describe_alarms(alarm_names=[name])
-    if len(alarms) == 0:
+    if not alarms:
         return None
     if len(alarms) > 1:
-        log.error("multiple alarms matched name '{0}'".format(name))
+        log.error("multiple alarms matched name '%s'", name)
     return _metric_alarm_to_dict(alarms[0])
 
 
 def _safe_dump(data):
-    ###########################################
-    # this presenter magic makes yaml.safe_dump
-    # work with the objects returned from
-    # boto.describe_alarms()
-    ###########################################
-    def ordered_dict_presenter(dumper, data):
-        return dumper.represent_dict(list(data.items()))
-
-    yaml.add_representer(odict.OrderedDict, ordered_dict_presenter,
-                         Dumper=yaml.dumper.SafeDumper)
+    '''
+    this presenter magic makes yaml.safe_dump
+    work with the objects returned from
+    boto.describe_alarms()
+    '''
+    custom_dumper = __utils__['yaml.get_dumper']('SafeOrderedDumper')
 
     def boto_listelement_presenter(dumper, data):
         return dumper.represent_list(list(data))
 
     yaml.add_representer(boto.ec2.cloudwatch.listelement.ListElement,
                          boto_listelement_presenter,
-                         Dumper=yaml.dumper.SafeDumper)
+                         Dumper=custom_dumper)
 
     def dimension_presenter(dumper, data):
         return dumper.represent_dict(dict(data))
 
     yaml.add_representer(boto.ec2.cloudwatch.dimension.Dimension,
-                         dimension_presenter, Dumper=yaml.dumper.SafeDumper)
+                         dimension_presenter, Dumper=custom_dumper)
 
-    return yaml.safe_dump(data)
+    return __utils__['yaml.dump'](data, Dumper=custom_dumper)
 
 
 def get_all_alarms(region=None, prefix=None, key=None, keyid=None,
@@ -147,9 +157,8 @@ def get_all_alarms(region=None, prefix=None, key=None, keyid=None,
 
         salt myminion boto_cloudwatch.get_all_alarms region=us-east-1 --out=txt
     '''
-    conn = _get_conn(region, key, keyid, profile)
-    if not conn:
-        return None
+    conn = _get_conn(region=region, key=key, keyid=keyid, profile=profile)
+
     alarms = conn.describe_alarms()
     results = odict.OrderedDict()
     for alarm in alarms:
@@ -160,9 +169,7 @@ def get_all_alarms(region=None, prefix=None, key=None, keyid=None,
                 continue
             name = prefix + alarm["name"]
         del alarm["name"]
-        alarm_sls = []
-        alarm_sls.append({"name": name})
-        alarm_sls.append({"attributes": alarm})
+        alarm_sls = [{"name": name}, {"attributes": alarm}]
         results["manage alarm " + name] = {"boto_cloudwatch_alarm.present":
                                            alarm_sls}
     return _safe_dump(results)
@@ -179,7 +186,7 @@ def create_or_update_alarm(
     Create or update a cloudwatch alarm.
 
     Params are the same as:
-        http://boto.readthedocs.org/en/latest/ref/cloudwatch.html#boto.ec2.cloudwatch.alarm.MetricAlarm.
+        https://boto.readthedocs.io/en/latest/ref/cloudwatch.html#boto.ec2.cloudwatch.alarm.MetricAlarm.
 
     Dimensions must be a dict. If the value of Dimensions is a string, it will
     be json decoded to produce a dict. alarm_actions, insufficient_data_actions,
@@ -208,28 +215,40 @@ def create_or_update_alarm(
         period = int(period)
     if evaluation_periods:
         evaluation_periods = int(evaluation_periods)
-    if isinstance(dimensions, string_types):
-        dimensions = json.loads(dimensions)
+    if isinstance(dimensions, six.string_types):
+        dimensions = salt.utils.json.loads(dimensions)
         if not isinstance(dimensions, dict):
-            log.error("could not parse dimensions argument: must be json encoding of a dict: '{0}'".format(dimensions))
+            log.error("could not parse dimensions argument: must be json encoding of a dict: '%s'", dimensions)
             return False
-    if isinstance(alarm_actions, string_types):
+    if isinstance(alarm_actions, six.string_types):
         alarm_actions = alarm_actions.split(",")
-    if isinstance(insufficient_data_actions, string_types):
+    if isinstance(insufficient_data_actions, six.string_types):
         insufficient_data_actions = insufficient_data_actions.split(",")
-    if isinstance(ok_actions, string_types):
+    if isinstance(ok_actions, six.string_types):
         ok_actions = ok_actions.split(",")
 
-    # convert action names into ARN's
-    alarm_actions = convert_to_arn(alarm_actions, region, key, keyid, profile)
-    insufficient_data_actions = convert_to_arn(
-        insufficient_data_actions, region, key, keyid, profile
-    )
-    ok_actions = convert_to_arn(ok_actions, region, key, keyid, profile)
+    # convert provided action names into ARN's
+    if alarm_actions:
+        alarm_actions = convert_to_arn(alarm_actions,
+                                       region=region,
+                                       key=key,
+                                       keyid=keyid,
+                                       profile=profile)
+    if insufficient_data_actions:
+        insufficient_data_actions = convert_to_arn(insufficient_data_actions,
+                                                   region=region,
+                                                   key=key,
+                                                   keyid=keyid,
+                                                   profile=profile)
+    if ok_actions:
+        ok_actions = convert_to_arn(ok_actions,
+                                    region=region,
+                                    key=key,
+                                    keyid=keyid,
+                                    profile=profile)
 
-    conn = _get_conn(region, key, keyid, profile)
-    if not conn:
-        return False
+    conn = _get_conn(region=region, key=key, keyid=keyid, profile=profile)
+
     alarm = boto.ec2.cloudwatch.alarm.MetricAlarm(
         connection=connection,
         name=name,
@@ -248,7 +267,7 @@ def create_or_update_alarm(
         ok_actions=ok_actions
     )
     conn.create_alarm(alarm)
-    log.info('Created/updated alarm {0}'.format(name))
+    log.info('Created/updated alarm %s', name)
     return True
 
 
@@ -271,7 +290,7 @@ def convert_to_arn(arns, region=None, key=None, keyid=None, profile=None):
             if policy_arn:
                 results.append(policy_arn)
             else:
-                log.error('Could not convert: {0}'.format(arn))
+                log.error('Could not convert: %s', arn)
         else:
             results.append(arn)
     return results
@@ -285,11 +304,10 @@ def delete_alarm(name, region=None, key=None, keyid=None, profile=None):
 
         salt myminion boto_cloudwatch.delete_alarm myalarm region=us-east-1
     '''
-    conn = _get_conn(region, key, keyid, profile)
-    if not conn:
-        return False
+    conn = _get_conn(region=region, key=key, keyid=keyid, profile=profile)
+
     conn.delete_alarms([name])
-    log.info('Deleted alarm {0}'.format(name))
+    log.info('Deleted alarm %s', name)
     return True
 
 
@@ -307,38 +325,3 @@ def _metric_alarm_to_dict(alarm):
         if hasattr(alarm, f):
             d[f] = getattr(alarm, f)
     return d
-
-
-def _get_conn(region, key, keyid, profile):
-    '''
-    Get a boto connection to cloudwatch.
-    '''
-    if profile:
-        if isinstance(profile, string_types):
-            _profile = __salt__['config.option'](profile)
-        elif isinstance(profile, dict):
-            _profile = profile
-        key = _profile.get('key', None)
-        keyid = _profile.get('keyid', None)
-        region = _profile.get('region', None)
-
-    if not region and __salt__['config.option']('cloudwatch_alarm.region'):
-        region = __salt__['config.option']('cloudwatch_alarm.region')
-
-    if not region:
-        region = 'us-east-1'
-
-    if not key and __salt__['config.option']('cloudwatch_alarm.key'):
-        key = __salt__['config.option']('cloudwatch_alarm.key')
-    if not keyid and __salt__['config.option']('cloudwatch_alarm.keyid'):
-        keyid = __salt__['config.option']('cloudwatch_alarm.keyid')
-
-    try:
-        conn = boto.ec2.cloudwatch.connect_to_region(
-            region, aws_access_key_id=keyid, aws_secret_access_key=key
-        )
-    except boto.exception.NoAuthHandlerFound:
-        log.error('No authentication credentials found when attempting to'
-                  ' make boto cloudwatch_alarm connection.')
-        return None
-    return conn

@@ -2,15 +2,19 @@
 '''
 Work with incron
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 
 # Import python libs
 import logging
 import os
 
 # Import salt libs
-import salt.utils
+from salt.ext import six
 from salt.ext.six.moves import range
+import salt.utils.data
+import salt.utils.files
+import salt.utils.functools
+import salt.utils.stringutils
 
 # Set up logging
 log = logging.getLogger(__name__)
@@ -24,7 +28,8 @@ _MASK_TYPES = [
     'IN_DELETE_SELF', 'IN_MODIFY', 'IN_MOVE_SELF',
     'IN_MOVED_FROM', 'IN_MOVED_TO', 'IN_OPEN',
     'IN_ALL_EVENTS', 'IN_MOVE', 'IN_CLOSE',
-    'IN_DONT_FOLLOW', 'IN_ONESHOT', 'IN_ONLYDIR'
+    'IN_DONT_FOLLOW', 'IN_ONESHOT', 'IN_ONLYDIR',
+    'IN_NO_LOOP'
 ]
 
 
@@ -48,50 +53,45 @@ def _render_tab(lst):
     for pre in lst['pre']:
         ret.append('{0}\n'.format(pre))
     for cron in lst['crons']:
-        ret.append('{0} {1} {2} {3}\n'.format(cron['path'],
-                                                      cron['mask'],
-                                                      cron['cmd'],
-                                                      TAG
-                                                      )
+        ret.append('{0} {1} {2}\n'.format(cron['path'],
+                                          cron['mask'],
+                                          cron['cmd'],
+                                          )
                    )
     return ret
 
 
-def _get_incron_cmdstr(user, path):
+def _get_incron_cmdstr(path):
     '''
-    Returns a platform-specific format string, to be used to build a incrontab
-    command.
+    Returns a format string, to be used to build an incrontab command.
     '''
-    if __grains__['os_family'] == 'Solaris':
-        return 'su - {0} -c "incrontab {1}"'.format(user, path)
-    else:
-        return 'incrontab -u {0} {1}'.format(user, path)
+    return 'incrontab {0}'.format(path)
 
 
 def write_incron_file(user, path):
     '''
-    Writes the contents of a file to a user's crontab
+    Writes the contents of a file to a user's incrontab
 
     CLI Example:
 
     .. code-block:: bash
 
-        salt '*' incron.write_cron_file root /tmp/new_cron
+        salt '*' incron.write_incron_file root /tmp/new_incron
     '''
-    return __salt__['cmd.retcode'](_get_incron_cmdstr(user, path)) == 0
+    return __salt__['cmd.retcode'](_get_incron_cmdstr(path), runas=user, python_shell=False) == 0
 
 
-def write_cron_file_verbose(user, path):
+def write_incron_file_verbose(user, path):
     '''
-    Writes the contents of a file to a user's crontab and return error message on error
+    Writes the contents of a file to a user's incrontab and return error message on error
 
     CLI Example:
 
     .. code-block:: bash
 
-        salt '*' incron.write_incron_file_verbose root /tmp/new_cron
+        salt '*' incron.write_incron_file_verbose root /tmp/new_incron
     '''
-    return __salt__['cmd.run_all'](_get_incron_cmdstr(user, path))
+    return __salt__['cmd.run_all'](_get_incron_cmdstr(path), runas=user, python_shell=False)
 
 
 def _write_incron_lines(user, lines):
@@ -103,12 +103,12 @@ def _write_incron_lines(user, lines):
         ret['retcode'] = _write_file(_INCRON_SYSTEM_TAB, 'salt', ''.join(lines))
         return ret
     else:
-        path = salt.utils.mkstemp()
-        with salt.utils.fopen(path, 'w+') as fp_:
-            fp_.writelines(lines)
+        path = salt.utils.files.mkstemp()
+        with salt.utils.files.fopen(path, 'wb') as fp_:
+            fp_.writelines(salt.utils.data.encode(lines))
         if __grains__['os_family'] == 'Solaris' and user != "root":
-            __salt__['cmd.run']('chown {0} {1}'.format(user, path))
-        ret = __salt__['cmd.run_all'](_get_incron_cmdstr(user, path))
+            __salt__['cmd.run']('chown {0} {1}'.format(user, path), python_shell=False)
+        ret = __salt__['cmd.run_all'](_get_incron_cmdstr(path), runas=user, python_shell=False)
         os.remove(path)
         return ret
 
@@ -119,13 +119,11 @@ def _write_file(folder, filename, data):
     '''
     path = os.path.join(folder, filename)
     if not os.path.exists(folder):
-        msg = '{0} cannot be written. {1} does not exist'
-        msg = msg.format(filename, folder)
+        msg = '{0} cannot be written. {1} does not exist'.format(filename, folder)
         log.error(msg)
-        raise AttributeError(msg)
-    fout = salt.utils.fopen(path, 'w')
-    fout.write(data)
-    fout.close()
+        raise AttributeError(six.text_type(msg))
+    with salt.utils.files.fopen(path, 'w') as fp_:
+        fp_.write(salt.utils.stringutils.to_str(data))
 
     return 0
 
@@ -136,8 +134,8 @@ def _read_file(folder, filename):
     '''
     path = os.path.join(folder, filename)
     try:
-        with salt.utils.fopen(path, 'rb') as contents:
-            return contents.readlines()
+        with salt.utils.files.fopen(path, 'rb') as contents:
+            return salt.utils.data.decode(contents.readlines())
     except (OSError, IOError):
         return ''
 
@@ -150,10 +148,11 @@ def raw_system_incron():
 
     .. code-block:: bash
 
-        salt '*' incron.raw_system_cron
+        salt '*' incron.raw_system_incron
     '''
-    log.debug("read_file {0}" . format(_read_file(_INCRON_SYSTEM_TAB, 'salt')))
-    return ''.join(_read_file(_INCRON_SYSTEM_TAB, 'salt'))
+    _contents = _read_file(_INCRON_SYSTEM_TAB, 'salt')
+    log.debug('incron read_file contents: %s', _contents)
+    return ''.join(_contents)
 
 
 def raw_incron(user):
@@ -164,13 +163,13 @@ def raw_incron(user):
 
     .. code-block:: bash
 
-        salt '*' incron.raw_cron root
+        salt '*' incron.raw_incron root
     '''
     if __grains__['os_family'] == 'Solaris':
         cmd = 'incrontab -l {0}'.format(user)
     else:
         cmd = 'incrontab -l -u {0}'.format(user)
-    return __salt__['cmd.run_stdout'](cmd, rstrip=False)
+    return __salt__['cmd.run_stdout'](cmd, rstrip=False, runas=user, python_shell=False)
 
 
 def list_tab(user):
@@ -187,39 +186,35 @@ def list_tab(user):
         data = raw_system_incron()
     else:
         data = raw_incron(user)
-        log.debug("user data {0}" . format(data))
+        log.debug('incron user data %s', data)
     ret = {'crons': [],
            'pre': []
            }
     flag = False
-    comment = None
-    tag = '# Line managed by Salt, do not edit'
     for line in data.splitlines():
-        if line.endswith(tag):
-            if len(line.split()) > 3:
-                # Appears to be a standard incron line
-                comps = line.split()
-                path = comps[0]
-                mask = comps[1]
-                (cmd, comment) = ' '.join(comps[2:]).split(' # ')
+        if len(line.split()) > 3:
+            # Appears to be a standard incron line
+            comps = line.split()
+            path = comps[0]
+            mask = comps[1]
+            cmd = ' '.join(comps[2:])
 
-                dat = {'path': path,
-                       'mask': mask,
-                       'cmd': cmd,
-                       'comment': comment}
-                ret['crons'].append(dat)
-                comment = None
+            dat = {'path': path,
+                   'mask': mask,
+                   'cmd': cmd}
+            ret['crons'].append(dat)
         else:
             ret['pre'].append(line)
     return ret
 
+
 # For consistency's sake
-ls = list_tab  # pylint: disable=C0103
+ls = salt.utils.functools.alias_function(list_tab, 'ls')
 
 
 def set_job(user, path, mask, cmd):
     '''
-    Sets a cron job up for a specified user.
+    Sets an incron job up for a specified user.
 
     CLI Example:
 
@@ -228,7 +223,7 @@ def set_job(user, path, mask, cmd):
         salt '*' incron.set_job root '/root' 'IN_MODIFY' 'echo "$$ $@ $# $% $&"'
     '''
     # Scrub the types
-    mask = str(mask).upper()
+    mask = six.text_type(mask).upper()
 
     # Check for valid mask types
     for item in mask.split(','):
@@ -241,7 +236,7 @@ def set_job(user, path, mask, cmd):
     lst = list_tab(user)
 
     updated_crons = []
-    # Look for existing crons that have cmd, path and at least one of the MASKS
+    # Look for existing incrons that have cmd, path and at least one of the MASKS
     # remove and replace with the one we're passed
     for item, cron in enumerate(lst['crons']):
         if path == cron['path']:
@@ -280,7 +275,7 @@ def rm_job(user,
            mask,
            cmd):
     '''
-    Remove a cron job for a specified user. If any of the day/time params are
+    Remove a incron job for a specified user. If any of the day/time params are
     specified, the job will only be removed if the specified params match.
 
     CLI Example:
@@ -291,7 +286,7 @@ def rm_job(user,
     '''
 
     # Scrub the types
-    mask = str(mask).upper()
+    mask = six.text_type(mask).upper()
 
     # Check for valid mask types
     for item in mask.split(','):
@@ -318,4 +313,5 @@ def rm_job(user,
 
     return ret
 
-rm = rm_job  # pylint: disable=C0103
+
+rm = salt.utils.functools.alias_function(rm_job, 'rm')

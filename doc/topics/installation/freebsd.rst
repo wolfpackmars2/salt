@@ -2,55 +2,56 @@
 FreeBSD
 =======
 
-Salt was added to the FreeBSD ports tree Dec 26th, 2011 by Christer Edwards
-<christer.edwards@gmail.com>. It has been tested on FreeBSD 7.4, 8.2, 9.0 and 9.1
-releases.
-
-Salt is dependent on the following additional ports. These will be installed as
-dependencies of the ``sysutils/py-salt`` port:
-
-.. code-block:: text
-
-   /devel/py-yaml
-   /devel/py-pyzmq
-   /devel/py-Jinja2
-   /devel/py-msgpack
-   /security/py-pycrypto
-   /security/py-m2crypto
-
 Installation
 ============
 
-On FreeBSD 10 and later, to install Salt from the FreeBSD pkgng repo, use the command:
+Salt is available in the FreeBSD ports tree at `sysutils/py-salt
+<https://www.freshports.org/sysutils/py-salt/>`_.
+
+
+FreeBSD binary repo
+===================
+
+For Python 2.7 use:
 
 .. code-block:: bash
 
     pkg install py27-salt
 
-On older versions of FreeBSD, to install Salt from the FreeBSD ports tree, use the command:
+For Python 3.6 use:
 
 .. code-block:: bash
 
-    make -C /usr/ports/sysutils/py-salt install clean
+    pkg install py36-salt
+
+FreeBSD ports
+=============
+
+Installation from ports:
+
+.. code-block:: bash
+
+    cd /usr/ports/sysutils/py-salt
+    make install
+
+Python 3.6 can be used by setting default Python version to 3.6:  
+    
+.. code-block:: text
+
+    echo "DEFAULT_VERSIONS+= python=3.6" >> /etc/make.conf
+
 
 Post-installation tasks
 =======================
 
-**Master**
-
-Copy the sample configuration file:
-
-.. code-block:: bash
-
-   cp /usr/local/etc/salt/master.sample /usr/local/etc/salt/master
 
 **rc.conf**
 
-Activate the Salt Master in ``/etc/rc.conf`` or ``/etc/rc.conf.local`` and add:
+Activate the Salt Master in ``/etc/rc.conf``:
 
-.. code-block:: diff
+.. code-block:: bash
 
-   + salt_master_enable="YES"
+   sysrc salt_master_enable="YES"
 
 **Start the Master**
 
@@ -60,22 +61,13 @@ Start the Salt Master as follows:
 
    service salt_master start
 
-**Minion**
+**rc.conf**
 
-Copy the sample configuration file:
+Activate the Salt Minion in ``/etc/rc.conf``:
 
 .. code-block:: bash
 
-   cp /usr/local/etc/salt/minion.sample /usr/local/etc/salt/minion
-
-**rc.conf**
-
-Activate the Salt Minion in ``/etc/rc.conf`` or ``/etc/rc.conf.local`` and add:
-
-.. code-block:: diff
-
-   + salt_minion_enable="YES"
-   + salt_minion_paths="/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"
+   sysrc salt_minion_enable="YES"
 
 **Start the Minion**
 
@@ -85,5 +77,4 @@ Start the Salt Minion as follows:
 
    service salt_minion start
 
-Now go to the :doc:`Configuring Salt</ref/configuration/index>` page.
-
+Now go to the :ref:`Configuring Salt<configuring-salt>` page.

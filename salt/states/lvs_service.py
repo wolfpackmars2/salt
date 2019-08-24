@@ -4,6 +4,9 @@ Management of LVS (Linux Virtual Server) Service
 ================================================
 '''
 
+# Import Python libs
+from __future__ import absolute_import, print_function, unicode_literals
+
 
 def __virtual__():
     '''
@@ -89,8 +92,6 @@ def present(name,
                 ret['comment'] = 'LVS Service {0} create failed({1})'.format(name, service_add)
                 ret['result'] = False
                 return ret
-
-    return ret
 
 
 def absent(name, protocol=None, service_address=None):

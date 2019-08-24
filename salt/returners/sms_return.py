@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
 '''
-Return data by SMS
+Return data by SMS.
+
+.. versionadded:: 2015.5.0
 
 :maintainer:    Damian Myerscough
 :maturity:      new
@@ -10,24 +12,25 @@ Return data by SMS
 
 To enable this returner the minion will need the python twilio library
 installed and the following values configured in the minion or master
-config::
+config:
+
+.. code-block:: yaml
 
     twilio.sid: 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
     twilio.token: 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
     twilio.to: '+1415XXXXXXX'
     twilio.from: '+1650XXXXXXX'
 
-To use the sms returner, append '--return sms' to the salt command. ex:
+To use the sms returner, append '--return sms' to the salt command.
+
+.. code-block:: bash
 
     salt '*' test.ping --return sms
 
 '''
-from __future__ import absolute_import
-
-
+from __future__ import absolute_import, print_function, unicode_literals
 import logging
 
-import salt.utils
 import salt.returners
 
 log = logging.getLogger(__name__)
@@ -45,8 +48,8 @@ __virtualname__ = 'sms'
 def __virtual__():
     if HAS_TWILIO:
         return __virtualname__
-    else:
-        return False
+
+    return False, 'Could not import sms returner; twilio is not installed.'
 
 
 def _get_options(ret=None):
@@ -93,8 +96,10 @@ def returner(ret):
                 ret['id'], ret['fun'], ret['success'], ret['jid']
             ), to=receiver, from_=sender)
     except TwilioRestException as e:
-        log.error('Twilio [https://www.twilio.com/docs/errors/{0}]'.format(
-            e.code))
+        log.error(
+            'Twilio [https://www.twilio.com/docs/errors/%s]',
+            e.code
+        )
         return False
 
     return True

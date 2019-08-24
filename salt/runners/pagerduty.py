@@ -15,15 +15,14 @@ Runner Module for Firing Events via PagerDuty
             pagerduty.api_key: F3Rbyjbve43rfFWf2214
             pagerduty.subdomain: mysubdomain
 '''
-from __future__ import absolute_import
-
-# Import python libs
-import yaml
-import json
+from __future__ import absolute_import, print_function, unicode_literals
 
 # Import salt libs
+import salt.utils.functools
+import salt.utils.json
 import salt.utils.pagerduty
-from salt.ext.six import string_types
+import salt.utils.yaml
+from salt.ext import six
 
 
 def __virtual__():
@@ -42,7 +41,11 @@ def list_services(profile=None, api_key=None):
         salt-run pagerduty.list_services my-pagerduty-account
     '''
     return salt.utils.pagerduty.list_items(
-        'services', 'name', profile, api_key, opts=__opts__
+        'services',
+        'name',
+        __salt__['config.option'](profile),
+        api_key,
+        opts=__opts__
     )
 
 
@@ -55,7 +58,11 @@ def list_incidents(profile=None, api_key=None):
         salt-run pagerduty.list_incidents my-pagerduty-account
     '''
     return salt.utils.pagerduty.list_items(
-        'incidents', 'id', profile, api_key, opts=__opts__
+        'incidents',
+        'id',
+        __salt__['config.option'](profile),
+        api_key,
+        opts=__opts__
     )
 
 
@@ -68,7 +75,11 @@ def list_users(profile=None, api_key=None):
         salt-run pagerduty.list_users my-pagerduty-account
     '''
     return salt.utils.pagerduty.list_items(
-        'users', 'id', profile, api_key, opts=__opts__
+        'users',
+        'id',
+        __salt__['config.option'](profile),
+        api_key,
+        opts=__opts__
     )
 
 
@@ -81,7 +92,11 @@ def list_schedules(profile=None, api_key=None):
         salt-run pagerduty.list_schedules my-pagerduty-account
     '''
     return salt.utils.pagerduty.list_items(
-        'schedules', 'id', profile, api_key, opts=__opts__
+        'schedules',
+        'id',
+        __salt__['config.option'](profile),
+        api_key,
+        opts=__opts__
     )
 
 
@@ -95,12 +110,16 @@ def list_windows(profile=None, api_key=None):
         salt-run pagerduty.list_maintenance_windows my-pagerduty-account
     '''
     return salt.utils.pagerduty.list_items(
-        'maintenance_windows', 'id', profile, api_key, opts=__opts__
+        'maintenance_windows',
+        'id',
+        __salt__['config.option'](profile),
+        api_key,
+        opts=__opts__
     )
 
 
 # The long version, added for consistency
-list_maintenance_windows = list_windows
+list_maintenance_windows = salt.utils.functools.alias_function(list_windows, 'list_maintenance_windows')
 
 
 def list_policies(profile=None, api_key=None):
@@ -113,12 +132,16 @@ def list_policies(profile=None, api_key=None):
         salt-run pagerduty.list_escalation_policies my-pagerduty-account
     '''
     return salt.utils.pagerduty.list_items(
-        'escalation_policies', 'id', profile, api_key, opts=__opts__
+        'escalation_policies',
+        'id',
+        __salt__['config.option'](profile),
+        api_key,
+        opts=__opts__
     )
 
 
 # The long version, added for consistency
-list_escalation_policies = list_policies
+list_escalation_policies = salt.utils.functools.alias_function(list_policies, 'list_escalation_policies')
 
 
 def create_event(service_key=None, description=None, details=None,
@@ -150,14 +173,14 @@ def create_event(service_key=None, description=None, details=None,
     '''
     trigger_url = 'https://events.pagerduty.com/generic/2010-04-15/create_event.json'
 
-    if isinstance(details, string_types):
-        details = yaml.safe_load(details)
-        if isinstance(details, string_types):
+    if isinstance(details, six.string_types):
+        details = salt.utils.yaml.safe_load(details)
+        if isinstance(details, six.string_types):
             details = {'details': details}
 
-    ret = json.loads(salt.utils.pagerduty.query(
+    ret = salt.utils.json.loads(salt.utils.pagerduty.query(
         method='POST',
-        profile=profile,
+        profile_dict=__salt__['config.option'](profile),
         api_key=service_key,
         data={
             'service_key': service_key,

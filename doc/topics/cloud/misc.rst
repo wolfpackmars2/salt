@@ -1,3 +1,5 @@
+.. _misc-salt-cloud-options:
+
 ================================
 Miscellaneous Salt Cloud Options
 ================================
@@ -14,38 +16,40 @@ to pass arguments to the deploy script:
 .. code-block:: yaml
 
     ec2-amazon:
-        provider: ec2
-        image: ami-1624987f
-        size: t1.micro
-        ssh_username: ec2-user
-        script: bootstrap-salt
-        script_args: -c /tmp/
+      provider: my-ec2-config
+      image: ami-1624987f
+      size: t1.micro
+      ssh_username: ec2-user
+      script: bootstrap-salt
+      script_args: -c /tmp/
 
 This has also been tested to work with pipes, if needed:
 
 .. code-block:: yaml
 
-    script_args: | head
+    script_args: '| head'
 
 
-Use SFTP to transfer files
-==========================
-Some distributions do not have scp distributed with the ssh package.  The
-solution is to use sftp with the `use_sftp` flag
+Selecting the File Transport
+============================
+By default, Salt Cloud uses SFTP to transfer files to Linux hosts. However, if
+SFTP is not available, or specific SCP functionality is needed, Salt Cloud can
+be configured to use SCP instead.
 
 .. code-block:: yaml
 
-    use_sftp: True
+    file_transport: sftp
+    file_transport: scp
 
 
 Sync After Install
 ==================
-Salt allows users to create custom modules, grains and states which can be 
+Salt allows users to create custom modules, grains, and states which can be
 synchronised to minions to extend Salt with further functionality.
 
 This option will inform Salt Cloud to synchronise your custom modules, grains,
-states or all these to the minion just after it has been created. For this to 
-happen, the following line needs to be added to the main cloud 
+states or all these to the minion just after it has been created. For this to
+happen, the following line needs to be added to the main cloud
 configuration file:
 
 .. code-block:: yaml
@@ -62,7 +66,7 @@ The available options for this setting are:
     all
 
 
-Setting up New Salt Masters
+Setting Up New Salt Masters
 ===========================
 It has become increasingly common for users to set up multi-hierarchal
 infrastructures using Salt Cloud. This sometimes involves setting up an
@@ -85,15 +89,57 @@ profile or map:
 .. code-block:: yaml
 
     master:
-        user: root
-        interface: 0.0.0.0
+      user: root
+      interface: 0.0.0.0
+
+
+Setting Up a Salt Syndic with Salt Cloud
+========================================
+
+In addition to `setting up new Salt Masters`_, :ref:`syndics <syndic>` can also be
+provisioned using Salt Cloud. In order to set up a Salt Syndic via Salt Cloud,
+a Salt Master needs to be installed on the new machine and a master configuration
+file needs to be set up using the ``make_master`` setting. This setting can be
+defined either in a profile config file or in a map file:
+
+.. code-block:: yaml
+
+    make_master: True
+
+To install the Salt Syndic, the only other specification that needs to be
+configured is the ``syndic_master`` key to specify the location of the master
+that the syndic will be reporting to. This modification needs to be placed
+in the ``master`` setting, which can be configured either in the profile,
+provider, or ``/etc/salt/cloud`` config file:
+
+.. code-block:: yaml
+
+    master:
+      syndic_master: 123.456.789  # may be either an IP address or a hostname
+
+Many other Salt Syndic configuration settings and specifications can be passed
+through to the new syndic machine via the ``master`` configuration setting.
+See the :ref:`syndic` documentation for more information.
+
+
+SSH Port
+========
+
+By default ssh port is set to port 22. If you want to use a custom port in
+provider, profile, or map blocks use ssh_port option.
+
+.. versionadded:: 2015.5.0
+
+.. code-block:: yaml
+
+    ssh_port: 2222
 
 
 Delete SSH Keys
 ===============
 When Salt Cloud deploys an instance, the SSH pub key for the instance is added
 to the known_hosts file for the user that ran the salt-cloud command. When an
-instance is deployed, a cloud provider generally recycles the IP address for
+instance is deployed, a cloud host generally recycles the IP address for
 the instance.  When Salt Cloud attempts to deploy an instance using a recycled
 IP address that has previously been accessed from the same machine, the old key
 in the known_hosts file will cause a conflict.
@@ -125,9 +171,9 @@ root logins, even for file transfers (which makes /root/ unavailable).
 
 Hide Output From Minion Install
 ===============================
-By default Salt Cloud will stream the output from the minion deploy script 
-directly to STDOUT. Although this can been very useful, in certain cases you 
-may wish to switch this off. The following config option is there to enable or 
+By default Salt Cloud will stream the output from the minion deploy script
+directly to STDOUT. Although this can been very useful, in certain cases you
+may wish to switch this off. The following config option is there to enable or
 disable this output:
 
 .. code-block:: yaml
@@ -138,71 +184,77 @@ disable this output:
 Connection Timeout
 ==================
 
-There are several stages when deploying Salt where Salt Cloud needs to wait for 
-something to happen. The VM getting it's IP address, the VM's SSH port is 
+There are several stages when deploying Salt where Salt Cloud needs to wait for
+something to happen. The VM getting it's IP address, the VM's SSH port is
 available, etc.
 
-If you find that the Salt Cloud defaults are not enough and your deployment 
-fails because Salt Cloud did not wait log enough, there are some settings you 
+If you find that the Salt Cloud defaults are not enough and your deployment
+fails because Salt Cloud did not wait log enough, there are some settings you
 can tweak.
 
 .. admonition:: Note
 
+    All settings should be provided in lowercase
     All values should be provided in seconds
 
 
-You can tweak these settings globally, per cloud provider, or event per profile 
+You can tweak these settings globally, per cloud provider, or event per profile
 definition.
 
 
 wait_for_ip_timeout
 ~~~~~~~~~~~~~~~~~~~
 
-The amount of time Salt Cloud should wait for a VM to start and get an IP back 
-from the cloud provider. Default: 5 minutes.
+The amount of time Salt Cloud should wait for a VM to start and get an IP back
+from the cloud host.
+Default: varies by cloud provider ( between 5 and 25 minutes)
 
 
 wait_for_ip_interval
 ~~~~~~~~~~~~~~~~~~~~
 
-The amount of time Salt Cloud should sleep while querying for the VM's IP.  
-Default: 5 seconds.
+The amount of time Salt Cloud should sleep while querying for the VM's IP.
+Default: varies by cloud provider ( between .5 and 10 seconds)
 
 
 ssh_connect_timeout
 ~~~~~~~~~~~~~~~~~~~
 
-The amount of time Salt Cloud should wait for a successful SSH connection to 
-the VM. Default: 5 minutes.
+The amount of time Salt Cloud should wait for a successful SSH connection to
+the VM.
+Default: varies by cloud provider  (between 5 and 15 minutes)
 
 
 wait_for_passwd_timeout
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-The amount of time until an ssh connection can be established via password or 
-ssh key. Default 15 seconds.
+The amount of time until an ssh connection can be established via password or
+ssh key.
+Default: varies by cloud provider (mostly 15 seconds)
 
 
 wait_for_passwd_maxtries
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 The number of attempts to connect to the VM until we abandon.
-Default 15 attempts
+Default: 15 attempts
 
 
 wait_for_fun_timeout
 ~~~~~~~~~~~~~~~~~~~~
 
-Some cloud drivers check for an available IP or a successful SSH connection 
-using a function, namely, SoftLayer and SoftLayer-HW. So, the amount of time 
-Salt Cloud should retry such functions before failing. Default: 5 minutes.
+Some cloud drivers check for an available IP or a successful SSH connection
+using a function, namely, SoftLayer, and SoftLayer-HW. So, the amount of time
+Salt Cloud should retry such functions before failing.
+Default: 15 minutes.
 
 
 wait_for_spot_timeout
 ~~~~~~~~~~~~~~~~~~~~~
 
-The amount of time Salt Cloud should wait before an EC2 Spot instance is 
+The amount of time Salt Cloud should wait before an EC2 Spot instance is
 available. This setting is only available for the EC2 cloud driver.
+Default: 10  minutes
 
 
 Salt Cloud Cache
@@ -225,7 +277,7 @@ diff_cache_events
 ~~~~~~~~~~~~~~~~~
 
 When the cloud cachedir is being managed, if differences are encountered
-between the data that is returned live from the cloud provider and the data in
+between the data that is returned live from the cloud host and the data in
 the cache, fire events which describe the changes. This setting can be True or
 False.
 
@@ -244,20 +296,20 @@ The following are events that can be fired based on this data.
 
 salt/cloud/minionid/cache_node_new
 **********************************
-A new node was found on the cloud provider which was not listed in the cloud
+A new node was found on the cloud host which was not listed in the cloud
 cachedir. A dict describing the new node will be contained in the event.
 
 
 salt/cloud/minionid/cache_node_missing
 **************************************
 A node that was previously listed in the cloud cachedir is no longer available
-on the cloud provider.
+on the cloud host.
 
 
 salt/cloud/minionid/cache_node_diff
 ***********************************
 One or more pieces of data in the cloud cachedir has changed on the cloud
-provider. A dict containing both the old and the new data will be contained in
+host. A dict containing both the old and the new data will be contained in
 the event.
 
 
@@ -291,11 +343,76 @@ only the EC2 driver supports this functionality.
 SSH Agent
 =========
 
-.. versionadded:: Lithium
+.. versionadded:: 2015.5.0
 
 If the ssh key is not stored on the server salt-cloud is being run on, set
-ssh_agent and salt-cloud will use the forwarded ssh-agent to authenticate.
+ssh_agent, and salt-cloud will use the forwarded ssh-agent to authenticate.
 
 .. code-block:: yaml
 
     ssh_agent: True
+
+File Map Upload
+===============
+
+.. versionadded:: 2014.7.0
+
+The ``file_map`` option allows an arbitrary group of files to be uploaded to the
+target system before running the deploy script. This functionality requires a
+provider uses salt.utils.cloud.bootstrap(), which is currently limited to the ec2,
+gce, openstack and nova drivers.
+
+The ``file_map`` can be configured globally in ``/etc/salt/cloud``, or in any cloud
+provider or profile file. For example, to upload an extra package or a custom deploy
+script, a cloud profile using ``file_map`` might look like:
+
+.. code-block:: yaml
+
+    ubuntu14:
+      provider: ec2-config
+      image: ami-98aa1cf0
+      size: t1.micro
+      ssh_username: root
+      securitygroup: default
+      file_map:
+        /local/path/to/custom/script: /remote/path/to/use/custom/script
+        /local/path/to/package: /remote/path/to/store/package
+
+Running Pre-Flight Commands
+===========================
+
+.. versionadded:: 2018.3.0
+
+To execute specified preflight shell commands on a VM before the deploy script is
+run, use the ``preflight_cmds`` option. These must be defined as a list in a cloud
+configuration file. For example:
+
+.. code-block:: yaml
+
+       my-cloud-profile:
+         provider: linode-config
+         image: Ubuntu 16.04 LTS
+         size: Linode 2048
+         preflight_cmds:
+           - whoami
+           - echo 'hello world!'
+
+These commands will run in sequence **before** the bootstrap script is executed.
+
+Force Minion Config
+===================
+
+.. versionadded:: 2018.3.0
+
+The ``force_minion_config`` option requests the bootstrap process to overwrite
+an existing minion configuration file and public/private key files.
+Default: False
+
+This might be important for drivers (such as ``saltify``) which are expected to
+take over a connection from a former salt master.
+
+.. code-block:: yaml
+
+    my_saltify_provider:
+      driver: saltify
+      force_minion_config: true

@@ -2,14 +2,16 @@
 '''
 Support for nginx
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 
 # Import 3rd-party libs
 from salt.ext.six.moves.urllib.request import urlopen as _urlopen  # pylint: disable=no-name-in-module,import-error
 
 # Import salt libs
-import salt.utils
+import salt.utils.path
 import salt.utils.decorators as decorators
+
+import re
 
 
 # Cache the output of running which('nginx') so this module
@@ -17,7 +19,7 @@ import salt.utils.decorators as decorators
 # for nginx over and over and over for each function herein
 @decorators.memoize
 def __detect_os():
-    return salt.utils.which('nginx')
+    return salt.utils.path.which('nginx')
 
 
 def __virtual__():
@@ -26,7 +28,7 @@ def __virtual__():
     '''
     if __detect_os():
         return True
-    return False
+    return (False, 'The nginx execution module cannot be loaded: nginx is not installed.')
 
 
 def version():
@@ -41,8 +43,31 @@ def version():
     '''
     cmd = '{0} -v'.format(__detect_os())
     out = __salt__['cmd.run'](cmd).splitlines()
-    ret = out[0].split(': ')
+    ret = out[0].split(': ')[-1].split('/')
     return ret[-1]
+
+
+def build_info():
+    '''
+    Return server and build arguments
+
+    CLI Example:
+
+    .. code-block:: bash
+
+        salt '*' nginx.build_info
+    '''
+    ret = {'info': []}
+    out = __salt__['cmd.run']('{0} -V'.format(__detect_os()))
+
+    for i in out.splitlines():
+        if i.startswith('configure argument'):
+            ret['build arguments'] = re.findall(r"(?:[^\s]*'.*')|(?:[^\s]+)", i)[2:]
+            continue
+
+        ret['info'].append(i)
+
+    return ret
 
 
 def configtest():
@@ -55,11 +80,23 @@ def configtest():
 
         salt '*' nginx.configtest
     '''
+    ret = {}
 
     cmd = '{0} -t'.format(__detect_os())
-    out = __salt__['cmd.run'](cmd).splitlines()
-    ret = out[0].split(': ')
-    return ret[-1]
+    out = __salt__['cmd.run_all'](cmd)
+
+    if out['retcode'] != 0:
+        ret['comment'] = 'Syntax Error'
+        ret['stderr'] = out['stderr']
+        ret['result'] = False
+
+        return ret
+
+    ret['comment'] = 'Syntax OK'
+    ret['stdout'] = out['stderr']
+    ret['result'] = True
+
+    return ret
 
 
 def signal(signal=None):

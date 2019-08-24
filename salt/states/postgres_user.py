@@ -10,16 +10,17 @@ The postgres_users module is used to create and manage Postgres users.
     frank:
       postgres_user.present
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals, print_function
 
 # Import Python libs
+import datetime
+import logging
 
 # Import salt libs
-import logging
 
 # Salt imports
 from salt.modules import postgres
-
+from salt.ext import six
 
 log = logging.getLogger(__name__)
 
@@ -28,20 +29,23 @@ def __virtual__():
     '''
     Only load if the postgres module is present
     '''
-    return 'postgres.user_exists' in __salt__
+    if 'postgres.user_exists' not in __salt__:
+        return (False, 'Unable to load postgres module.  Make sure `postgres.bins_dir` is set.')
+    return True
 
 
 def present(name,
             createdb=None,
             createroles=None,
-            createuser=None,
             encrypted=None,
             superuser=None,
             replication=None,
             inherit=None,
             login=None,
             password=None,
+            default_password=None,
             refresh_password=None,
+            valid_until=None,
             groups=None,
             user=None,
             maintenance_db=None,
@@ -56,16 +60,13 @@ def present(name,
     and groups the others.
 
     name
-        The name of the user to manage
+        The name of the system user to manage.
 
     createdb
         Is the user allowed to create databases?
 
     createroles
         Is the user allowed to create other users?
-
-    createuser
-        Alias to create roles
 
     encrypted
         Should the password be encrypted in the system catalog?
@@ -83,8 +84,8 @@ def present(name,
         Should the new user be allowed to initiate streaming replication
 
     password
-        The user's password
-        It can be either a plain string or a md5 postgresql hashed password::
+        The system user's password. It can be either a plain string or a
+        md5 postgresql hashed password::
 
             'md5{MD5OF({password}{role}}'
 
@@ -92,17 +93,25 @@ def present(name,
         encrypted to the previous
         format if it is not already done.
 
+    default_password
+        The password used only when creating the user, unless password is set.
+
+        .. versionadded:: 2016.3.0
+
     refresh_password
         Password refresh flag
 
         Boolean attribute to specify whether to password comparison check
         should be performed.
 
-        If refresh_password is None or False, the password will be automatically
+        If refresh_password is ``True``, the password will be automatically
         updated without extra password change check.
 
         This behaviour makes it possible to execute in environments without
         superuser access available, e.g. Amazon RDS for PostgreSQL
+
+    valid_until
+        A date and time after which the role's password is no longer valid.
 
     groups
         A string of comma separated groups the user should be in
@@ -113,31 +122,34 @@ def present(name,
         .. versionadded:: 0.17.0
 
     db_user
-        database username if different from config or default
+        Postgres database username, if different from config or default.
 
     db_password
-        user password if any password for a specified user
+        Postgres user's password, if any password, for a specified db_user.
 
     db_host
-        Database host if different from config or default
+        Postgres database host, if different from config or default.
 
     db_port
-        Database port if different from config or default
+        Postgres database port, if different from config or default.
     '''
     ret = {'name': name,
            'changes': {},
            'result': True,
            'comment': 'User {0} is already present'.format(name)}
 
-    if createuser:
-        createroles = True
     # default to encrypted passwords
     if encrypted is not False:
         encrypted = postgres._DEFAULT_PASSWORDS_ENCRYPTION
-    # maybe encrypt if if not already and necessary
+    # maybe encrypt if it's not already and necessary
     password = postgres._maybe_encrypt_password(name,
                                                 password,
                                                 encrypted=encrypted)
+
+    if default_password is not None:
+        default_password = postgres._maybe_encrypt_password(name,
+                                                            default_password,
+                                                            encrypted=encrypted)
 
     db_args = {
         'maintenance_db': maintenance_db,
@@ -155,10 +167,10 @@ def present(name,
     if user_attr is not None:
         mode = 'update'
 
-    # The user is not present, make it!
     cret = None
     update = {}
     if mode == 'update':
+        user_groups = user_attr.get('groups', [])
         if (
             createdb is not None
             and user_attr['can create databases'] != createdb
@@ -185,6 +197,29 @@ def present(name,
             update['superuser'] = superuser
         if password is not None and (refresh_password or user_attr['password'] != password):
             update['password'] = True
+        if valid_until is not None:
+            valid_until_dt = __salt__['postgres.psql_query'](
+                'SELECT \'{0}\'::timestamp(0) as dt;'.format(
+                    valid_until.replace('\'', '\'\'')),
+                **db_args)[0]['dt']
+            try:
+                valid_until_dt = datetime.datetime.strptime(
+                    valid_until_dt, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                valid_until_dt = None
+            if valid_until_dt != user_attr['expiry time']:
+                update['valid_until'] = valid_until
+        if groups is not None:
+            lgroups = groups
+            if isinstance(groups, (six.string_types, six.text_type)):
+                lgroups = lgroups.split(',')
+            if isinstance(lgroups, list):
+                missing_groups = [a for a in lgroups if a not in user_groups]
+                if missing_groups:
+                    update['groups'] = missing_groups
+
+    if mode == 'create' and password is None:
+        password = default_password
 
     if mode == 'create' or (mode == 'update' and update):
         if __opts__['test']:
@@ -203,6 +238,7 @@ def present(name,
             inherit=inherit,
             replication=replication,
             rolepassword=password,
+            valid_until=valid_until,
             groups=groups,
             **db_args)
     else:

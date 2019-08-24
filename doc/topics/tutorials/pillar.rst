@@ -1,3 +1,5 @@
+.. _pillar-walk-through:
+
 ==================
 Pillar Walkthrough
 ==================
@@ -5,7 +7,7 @@ Pillar Walkthrough
 .. note::
 
     This walkthrough assumes that the reader has already completed the initial
-    Salt :doc:`walkthrough </topics/tutorials/walkthrough>`.
+    Salt :ref:`walkthrough <tutorial-salt-walk-through>`.
 
 Pillars are tree-like structures of data defined on the Salt Master and passed
 through to minions. They allow confidential, targeted data to be securely sent
@@ -34,9 +36,9 @@ Variables:
     minions can be defined in pillar and then accessed inside sls formulas
     and template files.
 Arbitrary Data:
-    Pillar can contain any basic data structure, so a list of values, or a
-    key/value store can be defined making it easy to iterate over a group
-    of values in sls formulas
+    Pillar can contain any basic data structure in dictionary format,
+    so a key/value store can be defined making it easy to iterate over a group
+    of values in sls formulas.
 
 Pillar is therefore one of the most important systems when using Salt. This
 walkthrough is designed to get a simple Pillar up and running in a few minutes
@@ -57,18 +59,26 @@ pillar data:
     Prior to version 0.16.2, this function is named ``pillar.data``. This
     function name is still supported for backwards compatibility.
 
-By default the contents of the master configuration file are loaded into
-pillar for all minions. This enables the master configuration file to
-be used for global configuration of minions.
+By default, the contents of the master configuration file are not loaded into
+pillar for all minions. This default is stored in the ``pillar_opts`` setting,
+which defaults to ``False``.
+
+The contents of the master configuration file can be made available to minion
+pillar files. This makes global configuration of services and systems very easy,
+but note that this may not be desired or appropriate if sensitive data is stored
+in the master's configuration file. To enable the master configuration file to be
+available to a minion's pillar files, set ``pillar_opts`` to ``True`` in the
+minion configuration file.
 
 Similar to the state tree, the pillar is comprised of sls files and has a top file.
 The default location for the pillar is in /srv/pillar.
 
 .. note::
 
-    The pillar location can be configured via the `pillar_roots` option inside
+    The pillar location can be configured via the ``pillar_roots`` option inside
     the master configuration file. It must not be in a subdirectory of the state
-    tree.
+    tree or file_roots. If the pillar is under file_roots, any pillar targeting
+    can be bypassed by minions.
 
 To start setting up the pillar, the /srv/pillar directory needs to be present:
 
@@ -100,7 +110,7 @@ To ensure that the minions have the new pillar data, issue a command
 to them asking that they fetch their pillars from the master:
 
 .. code-block:: bash
-    
+
     salt '*' saltutil.refresh_pillar
 
 Now that the minions have the new pillar, it can be retrieved:
@@ -232,7 +242,7 @@ set in the minion's pillar, then the default of ``httpd`` will be used.
 .. note::
 
     Under the hood, pillar is just a Python dict, so Python dict methods such
-    as `get` and `items` can be used.
+    as ``get`` and ``items`` can be used.
 
 Pillar Makes Simple States Grow Easily
 ======================================
@@ -247,8 +257,7 @@ A simple formula:
 .. code-block:: yaml
 
     vim:
-      pkg:
-        - installed
+      pkg.installed: []
 
     /etc/vimrc:
       file.managed:
@@ -266,8 +275,7 @@ Can be easily transformed into a powerful, parameterized formula:
 .. code-block:: jinja
 
     vim:
-      pkg:
-        - installed
+      pkg.installed:
         - name: {{ pillar['pkgs']['vim'] }}
 
     /etc/vimrc:
@@ -295,33 +303,62 @@ Where the vimrc source location can now be changed via pillar:
 
 Ensuring that the right vimrc is sent out to the correct minions.
 
+The pillar top file must include a reference to the new sls pillar file:
+
+``/srv/pillar/top.sls``:
+
+.. code-block:: yaml
+
+    base:
+      '*':
+        - pkg
+        - edit.vim
+
+
 Setting Pillar Data on the Command Line
 =======================================
 
-Pillar data can be set on the command line like so:
+Pillar data can be set on the command line when running :py:func:`state.apply
+<salt.modules.state.apply_` like so:
 
 .. code-block:: bash
 
-    salt '*' state.highstate pillar='{"foo": "bar"}'
+    salt '*' state.apply pillar='{"foo": "bar"}'
+    salt '*' state.apply my_sls_file pillar='{"hello": "world"}'
 
-The ``state.sls`` command can also be used to set pillar values via the command
-line:
-
-.. code-block:: bash
-
-    salt '*' state.sls my_sls_file pillar='{"hello": "world"}'
-
-Lists can be passed in pillar as well:
+Nested pillar values can also be set via the command line:
 
 .. code-block:: bash
 
-    salt '*' state.highstate pillar='["foo", "bar", "baz"]'
+    salt '*' state.sls my_sls_file pillar='{"foo": {"bar": "baz"}}'
+
+Lists can be passed via command line pillar data as follows:
+
+.. code-block:: bash
+
+    salt '*' state.sls my_sls_file pillar='{"some_list": ["foo", "bar", "baz"]}'
 
 .. note::
 
     If a key is passed on the command line that already exists on the minion,
     the key that is passed in will overwrite the entire value of that key,
     rather than merging only the specified value set via the command line.
+
+The example below will swap the value for vim with telnet in the previously
+specified list, notice the nested pillar dict:
+
+.. code-block:: bash
+
+    salt '*' state.apply edit.vim pillar='{"pkgs": {"vim": "telnet"}}'
+
+This will attempt to install telnet on your minions, feel free to
+uninstall the package or replace telnet value with anything else.
+
+.. note::
+   Be aware that when sending sensitive data via pillar on the command-line
+   that the publication containing that data will be received by all minions
+   and will not be restricted to the targeted minions. This may represent
+   a security concern in some cases.
 
 More On Pillar
 ==============
@@ -334,4 +371,38 @@ information about an infrastructure is stored in a separate location.
 Reference information on pillar and the external pillar interface can be found
 in the Salt documentation:
 
-:doc:`Pillar </topics/pillar/index>`
+:ref:`Pillar <pillar>`
+
+Minion Config in Pillar
+=======================
+
+Minion configuration options can be set on pillars. Any option that you want
+to modify, should be in the first level of the pillars, in the same way you set
+the options in the config file. For example, to configure the MySQL root
+password to be used by MySQL Salt execution module:
+
+.. code-block:: yaml
+
+    mysql.pass: hardtoguesspassword
+
+This is very convenient when you need some dynamic configuration change that
+you want to be applied on the fly. For example, there is a chicken and the egg
+problem if you do this:
+
+.. code-block:: yaml
+
+    mysql-admin-passwd:
+      mysql_user.present:
+        - name: root
+        - password: somepasswd
+
+    mydb:
+      mysql_db.present
+
+The second state will fail, because you changed the root password and the
+minion didn't notice it. Setting mysql.pass in the pillar, will help to sort
+out the issue. But always change the root admin password in the first place.
+
+This is very helpful for any module that needs credentials to apply state
+changes: mysql, keystone, etc.
+

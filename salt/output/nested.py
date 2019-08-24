@@ -23,23 +23,36 @@ Example output::
                 - Hello
                 - World
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 # Import python libs
 from numbers import Number
-import re
 
 # Import salt libs
-import salt.utils
 import salt.output
-from salt.ext.six import string_types
+import salt.utils.color
+import salt.utils.odict
+import salt.utils.stringutils
+from salt.ext import six
+
+try:
+    from collections.abc import Mapping
+except ImportError:
+    from collections import Mapping
 
 
 class NestDisplay(object):
     '''
     Manage the nested display contents
     '''
-    def __init__(self):
-        self.colors = salt.utils.get_colors(__opts__.get('color'))
+    def __init__(self, retcode=0):
+        self.__dict__.update(
+            salt.utils.color.get_colors(
+                __opts__.get('color'),
+                __opts__.get('color_theme')
+            )
+        )
+        self.strip_colors = __opts__.get('strip_colors', True)
+        self.retcode = retcode
 
     def ustring(self,
                 indent,
@@ -49,75 +62,163 @@ class NestDisplay(object):
                 suffix='',
                 endc=None):
         if endc is None:
-            endc = self.colors['ENDC']
+            endc = self.ENDC
+
+        indent *= ' '
+        fmt = '{0}{1}{2}{3}{4}{5}'
+
         try:
-            return u'{0}{1}{2}{3}{4}{5}\n'.format(
-                indent, color, prefix, msg, endc, suffix)
+            return fmt.format(
+                indent,
+                color,
+                prefix,
+                msg,
+                endc,
+                suffix)
         except UnicodeDecodeError:
-            return u'{0}{1}{2}{3}{4}{5}\n'.format(
-                indent, color, prefix, salt.utils.sdecode(msg), endc, suffix)
+            try:
+                return fmt.format(
+                    indent,
+                    color,
+                    prefix,
+                    salt.utils.stringutils.to_unicode(msg),
+                    endc,
+                    suffix)
+            except UnicodeDecodeError:
+                # msg contains binary data that can't be decoded
+                return str(fmt).format(  # future lint: disable=blacklisted-function
+                    indent,
+                    color,
+                    prefix,
+                    msg,
+                    endc,
+                    suffix)
 
     def display(self, ret, indent, prefix, out):
         '''
         Recursively iterate down through data structures to determine output
         '''
-        strip_colors = __opts__.get('strip_colors', True)
+        if isinstance(ret, bytes):
+            try:
+                ret = salt.utils.stringutils.to_unicode(ret)
+            except UnicodeDecodeError:
+                # ret contains binary data that can't be decoded
+                pass
 
         if ret is None or ret is True or ret is False:
-            out += self.ustring(
-                ' ' * indent,
-                self.colors['YELLOW'],
-                ret,
-                prefix=prefix)
+            out.append(
+                self.ustring(
+                    indent,
+                    self.LIGHT_YELLOW,
+                    ret,
+                    prefix=prefix
+                )
+            )
         # Number includes all python numbers types
         #  (float, int, long, complex, ...)
+        # use repr() to get the full precision also for older python versions
+        # as until about python32 it was limited to 12 digits only by default
         elif isinstance(ret, Number):
-            out += self.ustring(
-                ' ' * indent,
-                self.colors['YELLOW'],
-                ret,
-                prefix=prefix)
-        elif isinstance(ret, string_types):
-            lines = re.split(r'\r?\n', ret)
-            for line in lines:
-                if strip_colors:
+            out.append(
+                self.ustring(
+                    indent,
+                    self.LIGHT_YELLOW,
+                    repr(ret),
+                    prefix=prefix
+                )
+            )
+        elif isinstance(ret, six.string_types):
+            first_line = True
+            for line in ret.splitlines():
+                line_prefix = ' ' * len(prefix) if not first_line else prefix
+                if isinstance(line, bytes):
+                    out.append(
+                        self.ustring(
+                            indent,
+                            self.YELLOW,
+                            'Not string data',
+                            prefix=line_prefix
+                        )
+                    )
+                    break
+                if self.strip_colors:
                     line = salt.output.strip_esc_sequence(line)
-                out += self.ustring(
-                    ' ' * indent,
-                    self.colors['GREEN'],
-                    line,
-                    prefix=prefix)
-        elif isinstance(ret, list) or isinstance(ret, tuple):
+                out.append(
+                    self.ustring(
+                        indent,
+                        self.GREEN,
+                        line,
+                        prefix=line_prefix
+                    )
+                )
+                first_line = False
+        elif isinstance(ret, (list, tuple)):
+            color = self.GREEN
+            if self.retcode != 0:
+                color = self.RED
             for ind in ret:
-                if isinstance(ind, (list, tuple, dict)):
-                    out += self.ustring(' ' * indent,
-                                        self.colors['GREEN'],
-                                        '|_')
-                    prefix = '' if isinstance(ind, dict) else '- '
-                    out = self.display(ind, indent + 2, prefix, out)
+                if isinstance(ind, (list, tuple, Mapping)):
+                    out.append(
+                        self.ustring(
+                            indent,
+                            color,
+                            '|_'
+                        )
+                    )
+                    prefix = '' if isinstance(ind, Mapping) else '- '
+                    self.display(ind, indent + 2, prefix, out)
                 else:
-                    out = self.display(ind, indent, '- ', out)
-        elif isinstance(ret, dict):
+                    self.display(ind, indent, '- ', out)
+        elif isinstance(ret, Mapping):
             if indent:
-                out += self.ustring(
-                    ' ' * indent,
-                    self.colors['CYAN'],
-                    '-' * 10)
-            for key in sorted(ret):
+                color = self.CYAN
+                if self.retcode != 0:
+                    color = self.RED
+                out.append(
+                    self.ustring(
+                        indent,
+                        color,
+                        '----------'
+                    )
+                )
+
+            # respect key ordering of ordered dicts
+            if isinstance(ret, salt.utils.odict.OrderedDict):
+                keys = ret.keys()
+            else:
+                keys = sorted(ret)
+            color = self.CYAN
+            if self.retcode != 0:
+                color = self.RED
+            for key in keys:
                 val = ret[key]
-                out += self.ustring(
-                    ' ' * indent,
-                    self.colors['CYAN'],
-                    key,
-                    suffix=":",
-                    prefix=prefix)
-                out = self.display(val, indent + 4, '', out)
+                out.append(
+                    self.ustring(
+                        indent,
+                        color,
+                        key,
+                        suffix=':',
+                        prefix=prefix
+                    )
+                )
+                self.display(val, indent + 4, '', out)
         return out
 
 
-def output(ret):
+def output(ret, **kwargs):
     '''
     Display ret data
     '''
-    nest = NestDisplay()
-    return nest.display(ret, __opts__.get('nested_indent', 0), '', '')
+    # Prefer kwargs before opts
+    retcode = kwargs.get('_retcode', 0)
+    base_indent = kwargs.get('nested_indent', 0) \
+        or __opts__.get('nested_indent', 0)
+    nest = NestDisplay(retcode=retcode)
+    lines = nest.display(ret, base_indent, '', [])
+    try:
+        return '\n'.join(lines)
+    except UnicodeDecodeError:
+        # output contains binary data that can't be decoded
+        return str('\n').join(  # future lint: disable=blacklisted-function
+            [salt.utils.stringutils.to_str(x) for x in lines]
+        )

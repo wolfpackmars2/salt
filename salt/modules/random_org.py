@@ -2,7 +2,7 @@
 '''
 Module for retrieving random information from Random.org
 
-.. versionadded:: Lithium
+.. versionadded:: 2015.5.0
 
 :configuration: This module can be used by either passing an api key and version
     directly or by specifying both in a configuration profile in the salt
@@ -18,16 +18,19 @@ Module for retrieving random information from Random.org
 '''
 
 # Import Python libs
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals, print_function
 import logging
 
 # Import 3rd-party libs
-import json
-import requests
-from requests.exceptions import ConnectionError
 # pylint: disable=import-error,no-name-in-module,redefined-builtin
+from salt.ext import six
+import salt.ext.six.moves.http_client
 from salt.ext.six.moves.urllib.parse import urljoin as _urljoin
-# pylint: enable=import-error,no-name-in-module
+# pylint: enable=import-error,no-name-in-module,redefined-builtin
+
+# Import salt libs
+import salt.utils.http
+import salt.utils.json
 
 log = logging.getLogger(__name__)
 __virtualname__ = 'random_org'
@@ -68,6 +71,13 @@ def __virtual__():
     return __virtualname__
 
 
+def _numeric(n):
+    '''
+    Tell whether an argument is numeric
+    '''
+    return isinstance(n, six.integer_types + (float, ))
+
+
 def _query(api_version=None, data=None):
     '''
     Slack object method function to construct and execute on the API URL.
@@ -84,38 +94,32 @@ def _query(api_version=None, data=None):
     ret = {'res': True}
 
     api_url = 'https://api.random.org/'
-    base_url = _urljoin(api_url, 'json-rpc/' + str(api_version) + '/invoke')
+    base_url = _urljoin(api_url, 'json-rpc/' + six.text_type(api_version) + '/invoke')
 
-    data = json.dumps(data)
+    data = salt.utils.json.dumps(data)
 
-    try:
-        result = requests.request(
-            method='POST',
-            url=base_url,
-            headers={},
-            params={},
-            data=data,
-            verify=True,
-        )
-    except ConnectionError as e:
-        ret['message'] = e
-        ret['res'] = False
-        return ret
+    result = salt.utils.http.query(
+        base_url,
+        method='POST',
+        params={},
+        data=data,
+        decode=True,
+        status=True,
+        header_dict={},
+        opts=__opts__,
+    )
 
-    if result.status_code == 200:
-        result = result.json()
-        if result.get('result'):
-            return result.get('result')
-        if result.get('error'):
-            return result.get('error')
-        return ret
-    elif result.status_code == 204:
-        return True
+    if result.get('status', None) == salt.ext.six.moves.http_client.OK:
+        _result = result['dict']
+        if _result.get('result'):
+            return _result.get('result')
+        if _result.get('error'):
+            return _result.get('error')
+        return False
+    elif result.get('status', None) == salt.ext.six.moves.http_client.NO_CONTENT:
+        return False
     else:
-        log.debug('base_url {0}'.format(base_url))
-        log.debug('data {0}'.format(data))
-        log.debug('result {0}'.format(result.text))
-        ret['message'] = result.text
+        ret['message'] = result.text if hasattr(result, 'text') else ''
         return ret
 
 
@@ -151,7 +155,7 @@ def getUsage(api_key=None, api_version=None):
             return ret
 
     if isinstance(api_version, int):
-        api_version = str(api_version)
+        api_version = six.text_type(api_version)
 
     _function = RANDOM_ORG_FUNCTIONS.get(api_version).get('getUsage').get('method')
     data = {}
@@ -230,17 +234,17 @@ def generateIntegers(api_key=None,
             ret['message'] = 'Rquired argument, {0} is missing.'.format(item)
             return ret
 
-    if not 1 <= kwargs['number'] <= 10000:
+    if not _numeric(kwargs['number']) or not 1 <= kwargs['number'] <= 10000:
         ret['res'] = False
         ret['message'] = 'Number of integers must be between 1 and 10000'
         return ret
 
-    if not -1000000000 <= kwargs['minimum'] <= 1000000000:
+    if not _numeric(kwargs['minimum']) or not -1000000000 <= kwargs['minimum'] <= 1000000000:
         ret['res'] = False
         ret['message'] = 'Minimum argument must be between -1,000,000,000 and 1,000,000,000'
         return ret
 
-    if not -1000000000 <= kwargs['maximum'] <= 1000000000:
+    if not _numeric(kwargs['maximum']) or not -1000000000 <= kwargs['maximum'] <= 1000000000:
         ret['res'] = False
         ret['message'] = 'Maximum argument must be between -1,000,000,000 and 1,000,000,000'
         return ret
@@ -260,7 +264,7 @@ def generateIntegers(api_key=None,
         replacement = kwargs['replacement']
 
     if isinstance(api_version, int):
-        api_version = str(api_version)
+        api_version = six.text_type(api_version)
 
     _function = RANDOM_ORG_FUNCTIONS.get(api_version).get('generateIntegers').get('method')
     data = {}
@@ -276,8 +280,8 @@ def generateIntegers(api_key=None,
                       }
 
     result = _query(api_version=api_version, data=data)
+    log.debug('result %s', result)
     if result:
-        log.debug('result {0}'.format(result))
         if 'random' in result:
             random_data = result.get('random').get('data')
             ret['data'] = random_data
@@ -345,12 +349,12 @@ def generateStrings(api_key=None,
             ret['message'] = 'Required argument, {0} is missing.'.format(item)
             return ret
 
-    if not 1 <= kwargs['number'] <= 10000:
+    if not _numeric(kwargs['number']) or not 1 <= kwargs['number'] <= 10000:
         ret['res'] = False
         ret['message'] = 'Number of strings must be between 1 and 10000'
         return ret
 
-    if not 1 <= kwargs['length'] <= 20:
+    if not _numeric(kwargs['length']) or not 1 <= kwargs['length'] <= 20:
         ret['res'] = False
         ret['message'] = 'Length of strings must be between 1 and 20'
         return ret
@@ -361,7 +365,7 @@ def generateStrings(api_key=None,
         return ret
 
     if isinstance(api_version, int):
-        api_version = str(api_version)
+        api_version = six.text_type(api_version)
 
     if 'replacement' not in kwargs:
         replacement = True
@@ -435,9 +439,9 @@ def generateUUIDs(api_key=None,
             return ret
 
     if isinstance(api_version, int):
-        api_version = str(api_version)
+        api_version = six.text_type(api_version)
 
-    if not 1 <= kwargs['number'] <= 1000:
+    if not _numeric(kwargs['number']) or not 1 <= kwargs['number'] <= 1000:
         ret['res'] = False
         ret['message'] = 'Number of UUIDs must be between 1 and 1000'
         return ret
@@ -516,12 +520,12 @@ def generateDecimalFractions(api_key=None,
             ret['message'] = 'Required argument, {0} is missing.'.format(item)
             return ret
 
-    if not 1 <= kwargs['number'] <= 10000:
+    if not isinstance(kwargs['number'], int) or not 1 <= kwargs['number'] <= 10000:
         ret['res'] = False
         ret['message'] = 'Number of decimal fractions must be between 1 and 10000'
         return ret
 
-    if not 1 <= kwargs['decimalPlaces'] <= 20:
+    if not _numeric(kwargs['decimalPlaces']) or not 1 <= kwargs['decimalPlaces'] <= 20:
         ret['res'] = False
         ret['message'] = 'Number of decimal places must be between 1 and 20'
         return ret
@@ -532,9 +536,8 @@ def generateDecimalFractions(api_key=None,
         replacement = kwargs['replacement']
 
     if isinstance(api_version, int):
-        api_version = str(api_version)
+        api_version = six.text_type(api_version)
 
-    log.debug('foo {0}'.format(RANDOM_ORG_FUNCTIONS.get(api_version)))
     _function = RANDOM_ORG_FUNCTIONS.get(api_version).get('generateDecimalFractions').get('method')
     data = {}
     data['id'] = 1911220
@@ -608,28 +611,28 @@ def generateGaussians(api_key=None,
             ret['message'] = 'Required argument, {0} is missing.'.format(item)
             return ret
 
-    if not 1 <= kwargs['number'] <= 10000:
+    if not _numeric(kwargs['number']) or not 1 <= kwargs['number'] <= 10000:
         ret['res'] = False
         ret['message'] = 'Number of decimal fractions must be between 1 and 10000'
         return ret
 
-    if not -1000000 <= kwargs['mean'] <= 1000000:
+    if not _numeric(kwargs['mean']) or not -1000000 <= kwargs['mean'] <= 1000000:
         ret['res'] = False
         ret['message'] = "The distribution's mean must be between -1000000 and 1000000"
         return ret
 
-    if not -1000000 <= kwargs['standardDeviation'] <= 1000000:
+    if not _numeric(kwargs['standardDeviation']) or not -1000000 <= kwargs['standardDeviation'] <= 1000000:
         ret['res'] = False
         ret['message'] = "The distribution's standard deviation must be between -1000000 and 1000000"
         return ret
 
-    if not 2 <= kwargs['significantDigits'] <= 20:
+    if not _numeric(kwargs['significantDigits']) or not 2 <= kwargs['significantDigits'] <= 20:
         ret['res'] = False
         ret['message'] = 'The number of significant digits must be between 2 and 20'
         return ret
 
     if isinstance(api_version, int):
-        api_version = str(api_version)
+        api_version = six.text_type(api_version)
 
     _function = RANDOM_ORG_FUNCTIONS.get(api_version).get('generateGaussians').get('method')
     data = {}
@@ -662,6 +665,7 @@ def generateBlobs(api_key=None,
                   **kwargs):
     '''
     List all Slack users.
+
     :param api_key: The Random.org api key.
     :param api_version: The Random.org api version.
     :param format: Specifies the format in which the
@@ -673,10 +677,9 @@ def generateBlobs(api_key=None,
 
     .. code-block:: bash
 
-        salt '*' get_intergers number=5 min=1 max=6
+        salt '*' get_integers number=5 min=1 max=6
 
-        salt '*' get_intergers number=5 min=1 max=6
-
+        salt '*' get_integers number=5 min=1 max=6
     '''
     ret = {'res': True}
 
@@ -699,13 +702,13 @@ def generateBlobs(api_key=None,
             ret['message'] = 'Required argument, {0} is missing.'.format(item)
             return ret
 
-    if not 1 <= kwargs['number'] <= 100:
+    if not _numeric(kwargs['number']) or not 1 <= kwargs['number'] <= 100:
         ret['res'] = False
         ret['message'] = 'Number of blobs must be between 1 and 100'
         return ret
 
     # size should be between range and divisible by 8
-    if not 1 <= kwargs['size'] <= 1048576 or kwargs['size'] % 8 != 0:
+    if not _numeric(kwargs['size']) or not 1 <= kwargs['size'] <= 1048576 or kwargs['size'] % 8 != 0:
         ret['res'] = False
         ret['message'] = 'Number of blobs must be between 1 and 100'
         return ret
@@ -720,7 +723,7 @@ def generateBlobs(api_key=None,
         _format = 'base64'
 
     if isinstance(api_version, int):
-        api_version = str(api_version)
+        api_version = six.text_type(api_version)
 
     _function = RANDOM_ORG_FUNCTIONS.get(api_version).get('generateBlobs').get('method')
     data = {}

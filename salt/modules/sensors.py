@@ -4,22 +4,22 @@ Read lm-sensors
 
 .. versionadded:: 2014.1.3
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals, print_function
 
-#Import python libs
+# Import python libs
 import logging
 
-#import salt libs
-import salt.utils
+# import Salt libs
+import salt.utils.path
 
 
 log = logging.getLogger(__name__)
 
 
 def __virtual__():
-    if salt.utils.which('sensors'):
+    if salt.utils.path.which('sensors'):
         return True
-    return False
+    return (False, 'sensors does not exist in the path')
 
 
 def sense(chip, fahrenheit=False):
@@ -46,7 +46,7 @@ def sense(chip, fahrenheit=False):
     extra_args = ''
     if fahrenheit is True:
         extra_args = '-f'
-    sensors = __salt__['cmd.run']('/usr/bin/sensors {0} {1}'.format(chip, extra_args), python_shell=True).splitlines()
+    sensors = __salt__['cmd.run']('/usr/bin/sensors {0} {1}'.format(chip, extra_args), python_shell=False).splitlines()
     ret = {}
     for sensor in sensors:
         sensor_list = sensor.split(':')

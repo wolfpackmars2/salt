@@ -2,18 +2,19 @@
 '''
 Support for Layman
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 
-import salt.utils
+import salt.utils.path
+import salt.exceptions
 
 
 def __virtual__():
     '''
     Only work on Gentoo systems with layman installed
     '''
-    if __grains__['os'] == 'Gentoo' and salt.utils.which('layman'):
+    if __grains__.get('os_family') == 'Gentoo' and salt.utils.path.which('layman'):
         return 'layman'
-    return False
+    return (False, 'layman execution module cannot be loaded: only available on Gentoo with layman installed.')
 
 
 def _get_makeconf():
@@ -46,13 +47,15 @@ def add(overlay):
     ret = list()
     old_overlays = list_local()
     cmd = 'layman --quietness=0 --add {0}'.format(overlay)
-    __salt__['cmd.retcode'](cmd)
+    add_attempt = __salt__['cmd.run_all'](cmd, python_shell=False, stdin='y')
+    if add_attempt['retcode'] != 0:
+        raise salt.exceptions.CommandExecutionError(add_attempt['stdout'])
     new_overlays = list_local()
 
     # If we did not have any overlays before and we successfully added
     # a new one. We need to ensure the make.conf is sourcing layman's
     # make.conf so emerge can see the overlays
-    if len(old_overlays) == 0 and len(new_overlays) > 0:
+    if not old_overlays and new_overlays:
         srcline = 'source /var/lib/layman/make.conf'
         makeconf = _get_makeconf()
         if not __salt__['file.contains'](makeconf, 'layman'):
@@ -78,12 +81,14 @@ def delete(overlay):
     ret = list()
     old_overlays = list_local()
     cmd = 'layman --quietness=0 --delete {0}'.format(overlay)
-    __salt__['cmd.retcode'](cmd)
+    delete_attempt = __salt__['cmd.run_all'](cmd, python_shell=False)
+    if delete_attempt['retcode'] != 0:
+        raise salt.exceptions.CommandExecutionError(delete_attempt['stdout'])
     new_overlays = list_local()
 
     # If we now have no overlays added, We need to ensure that the make.conf
     # does not source layman's make.conf, as it will break emerge
-    if len(new_overlays) == 0:
+    if not new_overlays:
         srcline = 'source /var/lib/layman/make.conf'
         makeconf = _get_makeconf()
         if __salt__['file.contains'](makeconf, 'layman'):
@@ -108,7 +113,7 @@ def sync(overlay='ALL'):
         salt '*' layman.sync
     '''
     cmd = 'layman --quietness=0 --sync {0}'.format(overlay)
-    return __salt__['cmd.retcode'](cmd) == 0
+    return __salt__['cmd.retcode'](cmd, python_shell=False) == 0
 
 
 def list_local():
@@ -124,6 +129,24 @@ def list_local():
         salt '*' layman.list_local
     '''
     cmd = 'layman --quietness=1 --list-local --nocolor'
-    out = __salt__['cmd.run'](cmd).split('\n')
+    out = __salt__['cmd.run'](cmd, python_shell=False).split('\n')
+    ret = [line.split()[1] for line in out if len(line.split()) > 2]
+    return ret
+
+
+def list_all():
+    '''
+    List all overlays, including remote ones.
+
+    Return a list of available overlays:
+
+    CLI Example:
+
+    .. code-block:: bash
+
+        salt '*' layman.list_all
+    '''
+    cmd = 'layman --quietness=1 --list --nocolor'
+    out = __salt__['cmd.run'](cmd, python_shell=False).split('\n')
     ret = [line.split()[1] for line in out if len(line.split()) > 2]
     return ret

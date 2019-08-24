@@ -1,9 +1,13 @@
+.. _event-master_events:
+
 ==================
 Salt Master Events
 ==================
 
 These events are fired on the Salt Master event bus. This list is **not**
 comprehensive.
+
+.. _event-master_auth:
 
 Authentication events
 =====================
@@ -16,6 +20,15 @@ Authentication events
     :var act: The current status of the minion key: ``accept``, ``pend``,
         ``reject``.
     :var pub: The minion public key.
+
+
+    .. note:: Minions fire auth events on fairly regular basis for a number
+              of reasons.  Writing reactors to respond to events through
+              the auth cycle can lead to infinite reactor event loops
+              (minion tries to auth, reactor responds by doing something
+              that generates another auth event, minion sends auth event,
+              etc.).  Consider reacting to ``salt/key`` or ``salt/minion/<MID>/start``
+              or firing a custom event tag instead.
 
 Start events
 ============
@@ -32,10 +45,17 @@ Key events
 .. salt:event:: salt/key
 
     Fired when accepting and rejecting minions keys on the Salt master.
+    These happen as a result of actions undertaken by the `salt-key` command.
 
     :var id: The minion ID.
-    :var act: The new status of the minion key: ``accept``, ``pend``,
-        ``reject``.
+    :var act: The new status of the minion key: ``accept``, ``delete``,
+
+.. warning:: If a master is in :conf_master:`auto_accept mode`, ``salt/key`` events
+             will not be fired when the keys are accepted.  In addition, pre-seeding
+             keys (like happens through :ref:`Salt-Cloud<salt-cloud>`) will not cause
+             firing of these events.
+
+
 
 Job events
 ==========
@@ -49,14 +69,14 @@ Job events
         ``G@os_family:RedHat``, etc.
     :var tgt_type: The type of targeting used: ``glob``, ``grain``,
         ``compound``, etc.
-    :var fun: The function to run on minions: ``test.ping``,
+    :var fun: The function to run on minions: ``test.version``,
         ``network.interfaces``, etc.
     :var arg: A list of arguments to pass to the function that will be
         called.
     :var minions: A list of minion IDs that Salt expects will return data for
         this job.
     :var user: The name of the user that ran the command as defined in Salt's
-        Client ACL or external auth.
+        Publisher ACL or external auth.
 
 .. salt:event:: salt/job/<JID>/ret/<MID>
 
@@ -65,15 +85,72 @@ Job events
     :var id: The minion ID.
     :var jid: The job ID.
     :var retcode: The return code for the job.
-    :var fun: The function the minion ran. E.g., ``test.ping``.
+    :var fun: The function the minion ran. E.g., ``test.version``.
     :var return: The data returned from the execution module.
 
-Presence events
+.. salt:event:: salt/job/<JID>/prog/<MID>/<RUN NUM>
+
+    Fired each time a each function in a state run completes execution. Must be
+    enabled using the :conf_master:`state_events` option.
+
+    :var data: The data returned from the state module function.
+    :var id: The minion ID.
+    :var jid: The job ID.
+
+Runner Events
+=============
+
+.. salt:event:: salt/run/<JID>/new
+
+    Fired as a runner begins execution
+
+    :var jid: The job ID.
+    :var fun: The name of the runner function, with ``runner.`` prepended to it
+        (e.g. ``runner.jobs.lookup_jid``)
+    :var fun_args: The arguments passed to the runner function (e.g.
+        ``['20160829225914848058']``)
+    :var user: The user who executed the runner (e.g. ``root``)
+
+.. salt:event:: salt/run/<JID>/ret
+
+    Fired when a runner function returns
+
+    :var jid: The job ID.
+    :var fun: The name of the runner function, with ``runner.`` prepended to it
+        (e.g. ``runner.jobs.lookup_jid``)
+    :var fun_args: The arguments passed to the runner function (e.g.
+        ``['20160829225914848058']``)
+    :var return: The data returned by the runner function
+
+.. salt:event:: salt/run/<JID>/args
+
+    .. versionadded:: 2016.11.0
+
+    Fired by the :mod:`state.orchestrate <salt.runners.state.orchestrate>`
+    runner
+
+    :var name: The ID declaration for the orchestration job (i.e. the line
+        above ``salt.state``, ``salt.function``, ``salt.runner``, etc.)
+    :var type: The type of orchestration job being run (e.g. ``state``)
+    :var tgt: The target expression (e.g. ``*``). Included for ``state`` and
+        ``function`` types only.
+    :var args: The args passed to the orchestration job. **Note:** for
+        ``state`` and ``function`` types, also includes a ``tgt_type`` value
+        which shows what kind of match (``glob``, ``pcre``, etc.) was used.
+        This value was named ``expr_form`` in the 2016.11 release cycle but has
+        been renamed to ``tgt_type`` in 2017.7.0 for consistency with other
+        events.
+
+.. _event-master_presence:
+
+Presence Events
 ===============
 
 .. salt:event:: salt/presence/present
 
-    Fired on a set schedule.
+    Events fired on a regular interval about currently connected, newly
+    connected, or recently disconnected minions. Requires the
+    :conf_master:`presence_events` setting to be enabled.
 
     :var present: A list of minions that are currently connected to the Salt
         master.
@@ -128,7 +205,7 @@ Minion-triggered events.
 
     :var event: description of the event.
     :var location: the location of the VM being requested.
-    :var kwargs: options available as the VM is being requested: 
+    :var kwargs: options available as the VM is being requested:
         ``Action``, ``ImageId``, ``InstanceType``, ``KeyName``, ``MaxCount``,
         ``MinCount``, ``SecurityGroup.1``
 

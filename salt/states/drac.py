@@ -27,7 +27,7 @@ Ensure the user damian does not exist
 
 Ensure DRAC network is in a consistent state
 
-  .. code-bock:: yaml
+  .. code-block:: yaml
 
     my_network:
       drac.network:
@@ -36,16 +36,17 @@ Ensure DRAC network is in a consistent state
         - gateway: 10.225.108.1
 
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 
 import salt.exceptions
+import salt.utils.path
 
 
 def __virtual__():
     '''
     Ensure the racadm command is installed
     '''
-    if salt.utils.which('racadm'):
+    if salt.utils.path.which('racadm'):
         return True
 
     return False

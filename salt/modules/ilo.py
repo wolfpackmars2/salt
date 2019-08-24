@@ -4,25 +4,29 @@ Manage HP ILO
 
 :depends: hponcfg (SmartStart Scripting Toolkit Linux Edition)
 '''
-from __future__ import absolute_import
 
-import xml.etree.cElementTree as ET
-import salt.utils
-import os
-
+# Import Python libs
+from __future__ import absolute_import, print_function, unicode_literals
 import logging
+import os
+import tempfile
+
+# Import Salt libs
+from salt._compat import ElementTree as ET
+from salt.ext import six
+import salt.utils.path
 
 log = logging.getLogger(__name__)
 
 
 def __virtual__():
     '''
-    Make sure hponcfg tool is accessiable
+    Make sure hponcfg tool is accessible
     '''
-    if salt.utils.which('hponcfg'):
+    if salt.utils.path.which('hponcfg'):
         return True
 
-    return False
+    return (False, 'ilo execution module not loaded: the hponcfg binary is not in the path.')
 
 
 def __execute_cmd(name, xml):
@@ -32,15 +36,20 @@ def __execute_cmd(name, xml):
     ret = {name.replace('_', ' '): {}}
     id_num = 0
 
-    with salt.utils.fopen('/tmp/{0}.{1}'.format(name, os.getpid()), 'w') as fh:
+    tmp_dir = os.path.join(__opts__['cachedir'], 'tmp')
+    if not os.path.isdir(tmp_dir):
+        os.mkdir(tmp_dir)
+    with tempfile.NamedTemporaryFile(dir=tmp_dir,
+                                     prefix=name + six.text_type(os.getpid()),
+                                     suffix='.xml',
+                                     delete=False) as fh:
+        tmpfilename = fh.name
         fh.write(xml)
 
-    cmd = __salt__['cmd.run_all']('hponcfg -f /tmp/{0}.{1}'.format(
-        name, os.getpid())
-        )
+    cmd = __salt__['cmd.run_all']('hponcfg -f {0}'.format(tmpfilename))
 
     # Clean up the temp file
-    __salt__['file.remove']('/tmp/{0}.{1}'.format(name, os.getpid()))
+    __salt__['file.remove'](tmpfilename)
 
     if cmd['retcode'] != 0:
         for i in cmd['stderr'].splitlines():
@@ -50,10 +59,10 @@ def __execute_cmd(name, xml):
 
     try:
         for i in ET.fromstring(''.join(cmd['stdout'].splitlines()[3:-1])):
-            # Make sure dict keys dont collide
+            # Make sure dict keys don't collide
             if ret[name.replace('_', ' ')].get(i.tag, False):
                 ret[name.replace('_', ' ')].update(
-                    {i.tag + '_' + str(id_num): i.attrib}
+                    {i.tag + '_' + six.text_type(id_num): i.attrib}
                 )
                 id_num += 1
             else:
@@ -94,7 +103,7 @@ def set_http_port(port=80):
 
     CLI Example:
 
-    .. code-block::
+    .. code-block:: bash
 
         salt '*' ilo.set_http_port 8080
     '''
@@ -580,7 +589,7 @@ def configure_snmp(community, snmp_port=161, snmp_trapport=161):
 
     CLI Example:
 
-    .. code-bash::
+    .. code-block:: bash
 
         salt '*' ilo.configure_snmp [COMMUNITY STRING] [SNMP PORT] [SNMP TRAP PORT]
     '''

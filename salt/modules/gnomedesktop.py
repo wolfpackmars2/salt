@@ -3,15 +3,25 @@
 GNOME implementations
 '''
 
+# Import Python libs
+from __future__ import absolute_import, print_function, unicode_literals
+import re
+import logging
 try:
     import pwd
+    HAS_PWD = True
+except ImportError:
+    HAS_PWD = False
+
+# Import Salt libs
+import salt.utils.path
+
+# Import 3rd-party libs
+try:
     from gi.repository import Gio, GLib  # pylint: disable=W0611
     HAS_GLIB = True
 except ImportError:
     HAS_GLIB = False
-
-import logging
-import re
 
 log = logging.getLogger(__name__)
 
@@ -28,9 +38,10 @@ def __virtual__():
     '''
     Only load if the Gio and Glib modules are available
     '''
-    if HAS_GLIB:
+    if HAS_PWD and HAS_GLIB:
         return __virtualname__
-    return False
+    return (False, 'The gnome_desktop execution module cannot be loaded: '
+          'The Gio and GLib modules are not available')
 
 
 class _GSettings(object):
@@ -40,6 +51,17 @@ class _GSettings(object):
         self.USER = user
         self.UID = None
         self.HOME = None
+
+    @property
+    def gsetting_command(self):
+        '''
+        return the command to run the gsettings binary
+        '''
+        if salt.utils.path.which_bin(['dbus-run-session']):
+            cmd = ['dbus-run-session', '--', 'gsettings']
+        else:
+            cmd = ['dbus-launch', '--exit-with-session', 'gsettings']
+        return cmd
 
     def _get(self):
         '''
@@ -53,10 +75,10 @@ class _GSettings(object):
             log.info('User does not exist')
             return False
 
-        cmd = 'dbus-launch --exit-with-session gsettings get {0} {1}'.format(self.SCHEMA, self.KEY)
+        cmd = self.gsetting_command + ['get', str(self.SCHEMA), str(self.KEY)]
         environ = {}
         environ['XDG_RUNTIME_DIR'] = '/run/user/{0}'.format(uid)
-        result = __salt__['cmd.run_all'](cmd, runas=user, env=environ)
+        result = __salt__['cmd.run_all'](cmd, runas=user, env=environ, python_shell=False)
 
         if 'stdout' in result:
             if 'uint32' in result['stdout']:
@@ -81,10 +103,10 @@ class _GSettings(object):
             result['stdout'] = 'User {0} does not exist'.format(user)
             return result
 
-        cmd = 'dbus-launch --exit-with-session gsettings set {0} {1} "{2}"'.format(self.SCHEMA, self.KEY, str(value))
+        cmd = self.gsetting_command + ['set', self.SCHEMA, self.KEY, value]
         environ = {}
         environ['XDG_RUNTIME_DIR'] = '/run/user/{0}'.format(uid)
-        result = __salt__['cmd.run_all'](cmd, runas=user, env=environ)
+        result = __salt__['cmd.run_all'](cmd, runas=user, env=environ, python_shell=False)
         return result
 
 

@@ -4,18 +4,20 @@ Support for modifying make.conf under Gentoo
 
 '''
 # Import python libs
-from __future__ import print_function
+from __future__ import absolute_import, print_function, unicode_literals
 
-import salt.utils
+# Import Salt libs
+import salt.utils.data
+import salt.utils.files
 
 
 def __virtual__():
     '''
     Only work on Gentoo
     '''
-    if __grains__['os'] == 'Gentoo':
+    if __grains__.get('os_family') == 'Gentoo':
         return 'makeconf'
-    return False
+    return (False, 'The makeconf execution module cannot be loaded: only available on Gentoo systems.')
 
 
 def _get_makeconf():
@@ -43,8 +45,10 @@ def _add_var(var, value):
     fullvar = '{0}="{1}"'.format(var, value)
     if __salt__['file.contains'](makeconf, layman):
         # TODO perhaps make this a function in the file module?
-        cmd = ['sed', '-i', '/{0}/'.format(layman.replace('/', '\\/')),
-               fullvar, makeconf]
+        cmd = ['sed', '-i', r'/{0}/ i\{1}'.format(
+                    layman.replace('/', '\\/'),
+                    fullvar),
+               makeconf]
         __salt__['cmd.run'](cmd)
     else:
         __salt__['file.append'](makeconf, fullvar)
@@ -181,11 +185,16 @@ def get_var(var):
     '''
     makeconf = _get_makeconf()
     # Open makeconf
-    with salt.utils.fopen(makeconf) as fn_:
-        conf_file = fn_.readlines()
+    with salt.utils.files.fopen(makeconf) as fn_:
+        conf_file = salt.utils.data.decode(fn_.readlines())
     for line in conf_file:
         if line.startswith(var):
-            ret = line.split('=', 1)[1].replace('"', '')
+            ret = line.split('=', 1)[1]
+            if '"' in ret:
+                ret = ret.split('"')[1]
+            elif '#' in ret:
+                ret = ret.split('#')[0]
+            ret = ret.strip()
             return ret
     return None
 

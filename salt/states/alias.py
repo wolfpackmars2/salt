@@ -16,7 +16,17 @@ aliases:
     thomas:
       alias.present:
         - target: thomas@example.com
+
+The default alias file is set to ``/etc/aliases``, as defined in Salt's
+:mod:`config execution module <salt.modules.config>`. To change the alias
+file from the default location, set the following in your minion config:
+
+.. code-block:: yaml
+
+    aliases.file: /my/alias/file
+
 '''
+from __future__ import absolute_import, print_function, unicode_literals
 
 
 def present(name, target):
@@ -53,7 +63,7 @@ def present(name, target):
         return ret
     else:
         ret['result'] = False
-        ret['comment'] = 'Failed to set alias'
+        ret['comment'] = 'Failed to set alias {0} -> {1}'.format(name, target)
         return ret
 
 
@@ -83,5 +93,5 @@ def absent(name):
         return ret
     else:
         ret['result'] = False
-        ret['comment'] = 'Failed to remove alias'
+        ret['comment'] = 'Failed to remove alias {0}'.format(name)
         return ret

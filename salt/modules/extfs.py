@@ -2,13 +2,13 @@
 '''
 Module for managing ext2/3/4 file systems
 '''
-from __future__ import absolute_import
 
-# Import python libs
+# Import Python libs
+from __future__ import absolute_import, print_function, unicode_literals
 import logging
 
 # Import salt libs
-import salt.utils
+import salt.utils.platform
 
 log = logging.getLogger(__name__)
 
@@ -17,8 +17,12 @@ def __virtual__():
     '''
     Only work on POSIX-like systems
     '''
-    if salt.utils.is_windows():
-        return False
+    if salt.utils.platform.is_windows():
+        return (
+            False,
+            'The extfs execution module cannot be loaded: only available on '
+            'non-Windows systems.'
+        )
     return True
 
 
@@ -98,7 +102,7 @@ def mkfs(device, fs_type, **kwargs):
             else:
                 opts += '-{0} {1} '.format(opt, kwargs[key])
     cmd = 'mke2fs -F -t {0} {1}{2}'.format(fs_type, opts, device)
-    out = __salt__['cmd.run'](cmd).splitlines()
+    out = __salt__['cmd.run'](cmd, python_shell=False).splitlines()
     ret = []
     for line in out:
         if not line:
@@ -183,7 +187,7 @@ def tune(device, **kwargs):
             else:
                 opts += '-{0} {1} '.format(opt, kwargs[key])
     cmd = 'tune2fs {0}{1}'.format(opts, device)
-    out = __salt__['cmd.run'](cmd).splitlines()
+    out = __salt__['cmd.run'](cmd, python_shell=False).splitlines()
     return out
 
 
@@ -229,7 +233,7 @@ def dump(device, args=None):
     if args:
         cmd = cmd + ' -' + args
     ret = {'attributes': {}, 'blocks': {}}
-    out = __salt__['cmd.run'](cmd).splitlines()
+    out = __salt__['cmd.run'](cmd, python_shell=False).splitlines()
     mode = 'opts'
     group = None
     for line in out:
@@ -245,6 +249,8 @@ def dump(device, args=None):
             elif line.startswith('Group') and not line.startswith('Group descriptor size'):
                 mode = 'blocks'
             else:
+                if len(comps) < 2:
+                    continue
                 ret['attributes'][comps[0]] = comps[1].strip()
 
         if mode == 'blocks':

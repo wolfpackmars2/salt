@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 '''
-    :codeauthor: :email:`Pedro Algarvio (pedro@algarvio.me)`
+    :codeauthor: Pedro Algarvio (pedro@algarvio.me)
 
 
     salt.utils.vt
@@ -19,7 +19,7 @@
     .. __: https://github.com/pexpect/pexpect
 
 '''
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 
 # Import python libs
 import os
@@ -29,16 +29,22 @@ import errno
 import signal
 import select
 import logging
-import subprocess
 
-if subprocess.mswindows:
+# Import salt libs
+from salt.ext import six
+
+mswindows = (sys.platform == "win32")
+
+try:
     # pylint: disable=F0401,W0611
     from win32file import ReadFile, WriteFile
     from win32pipe import PeekNamedPipe
     import msvcrt
-    import _subprocess
+    import win32api
+    import win32con
+    import win32process
     # pylint: enable=F0401,W0611
-else:
+except ImportError:
     import pty
     import fcntl
     import struct
@@ -46,6 +52,9 @@ else:
     import resource
 
 # Import salt libs
+import salt.utils.crypt
+import salt.utils.data
+import salt.utils.stringutils
 from salt.ext.six import string_types
 from salt.log.setup import LOG_LEVELS
 
@@ -115,10 +124,9 @@ class Terminal(object):
         # Let's avoid Zombies!!!
         _cleanup()
 
-        if not args and not executable and not shell:
+        if not args and not executable:
             raise TerminalException(
-                'You need to pass at least one of \'args\', \'executable\' '
-                'or \'shell=True\''
+                'You need to pass at least one of "args", "executable" '
             )
 
         self.args = args
@@ -175,7 +183,7 @@ class Terminal(object):
             self.stream_stdout = stream_stdout
         else:
             raise TerminalException(
-                'Don\'t know how to handle {0!r} as the VT\'s '
+                'Don\'t know how to handle \'{0}\' as the VT\'s '
                 '\'stream_stdout\' parameter.'.format(stream_stdout)
             )
 
@@ -194,7 +202,7 @@ class Terminal(object):
             self.stream_stderr = stream_stderr
         else:
             raise TerminalException(
-                'Don\'t know how to handle {0!r} as the VT\'s '
+                'Don\'t know how to handle \'{0}\' as the VT\'s '
                 '\'stream_stderr\' parameter.'.format(stream_stderr)
             )
         # <---- Direct Streaming Setup ---------------------------------------
@@ -206,7 +214,7 @@ class Terminal(object):
             # A lot can go wrong, so that's why we're catching the most general
             # exception type
             log.warning(
-                'Failed to spawn the VT: {0}'.format(err),
+                'Failed to spawn the VT: %s', err,
                  exc_info_on_loglevel=logging.DEBUG
             )
             raise TerminalException(
@@ -214,10 +222,15 @@ class Terminal(object):
             )
 
         log.debug(
-            'Child Forked! PID: {0}  STDOUT_FD: {1}  STDERR_FD: '
-            '{2}'.format(self.pid, self.child_fd, self.child_fde)
+            'Child Forked! PID: %s  STDOUT_FD: %s  STDERR_FD: %s',
+            self.pid, self.child_fd, self.child_fde
         )
-        log.debug('Terminal Command: {0}'.format(' '.join(self.args)))
+        terminal_command = ' '.join(self.args)
+        if 'decode("base64")' in terminal_command or 'base64.b64decode(' in terminal_command:
+            log.debug('VT: Salt-SSH SHIM Terminal Command executed. Logged to TRACE')
+            log.trace('Terminal Command: %s', terminal_command)
+        else:
+            log.debug('Terminal Command: %s', terminal_command)
         # <---- Spawn our terminal -------------------------------------------
 
         # ----- Setup Logging ----------------------------------------------->
@@ -343,7 +356,7 @@ class Terminal(object):
     # <---- Context Manager Methods ------------------------------------------
 
 # ----- Platform Specific Methods ------------------------------------------->
-    if subprocess.mswindows:
+    if mswindows:
         # ----- Windows Methods --------------------------------------------->
         def _execute(self):
             raise NotImplementedError
@@ -377,12 +390,12 @@ class Terminal(object):
             Terminates the process
             '''
             try:
-                _subprocess.TerminateProcess(self._handle, 1)
+                win32api.TerminateProcess(self._handle, 1)
             except OSError:
                 # ERROR_ACCESS_DENIED (winerror 5) is received when the
                 # process already died.
-                ecode = _subprocess.GetExitCodeProcess(self._handle)
-                if ecode == _subprocess.STILL_ACTIVE:
+                ecode = win32process.GetExitCodeProcess(self._handle)
+                if ecode == win32con.STILL_ACTIVE:
                     raise
                 self.exitstatus = ecode
 
@@ -429,10 +442,8 @@ class Terminal(object):
                         self.setwinsize(self.rows, self.cols)
                     except IOError as err:
                         log.warning(
-                            'Failed to set the VT terminal size: {0}'.format(
-                                err
-                            ),
-                            exc_info_on_loglevel=logging.DEBUG
+                            'Failed to set the VT terminal size: %s',
+                            err, exc_info_on_loglevel=logging.DEBUG
                         )
 
                 # Do not allow child to inherit open file descriptors from
@@ -481,6 +492,7 @@ class Terminal(object):
                 # Close parent FDs
                 os.close(stdout_parent_fd)
                 os.close(stderr_parent_fd)
+                salt.utils.crypt.reinit_crypto()
 
                 # ----- Make STDOUT the controlling PTY --------------------->
                 child_name = os.ttyname(stdout_child_fd)
@@ -491,7 +503,7 @@ class Terminal(object):
                     if tty_fd >= 0:
                         os.close(tty_fd)
                 # which exception, shouldn't we catch explicitly .. ?
-                except:  # pylint: disable=W0702
+                except Exception:
                     # Already disconnected. This happens if running inside cron
                     pass
 
@@ -509,7 +521,7 @@ class Terminal(object):
                             'still possible to open /dev/tty.'
                         )
                 # which exception, shouldn't we catch explicitly .. ?
-                except:  # pylint: disable=W0702
+                except Exception:
                     # Good! We are disconnected from a controlling tty.
                     pass
 
@@ -523,13 +535,15 @@ class Terminal(object):
                     os.close(tty_fd)
 
                 # Verify we now have a controlling tty.
-                tty_fd = os.open('/dev/tty', os.O_WRONLY)
-                if tty_fd < 0:
-                    raise TerminalException(
-                        'Could not open controlling tty, /dev/tty'
-                    )
-                else:
-                    os.close(tty_fd)
+                if os.name != 'posix':
+                    # Only do this check in not BSD-like operating systems. BSD-like operating systems breaks at this point
+                    tty_fd = os.open('/dev/tty', os.O_WRONLY)
+                    if tty_fd < 0:
+                        raise TerminalException(
+                            'Could not open controlling tty, /dev/tty'
+                        )
+                    else:
+                        os.close(tty_fd)
                 # <---- Make STDOUT the controlling PTY ----------------------
 
                 # ----- Duplicate Descriptors ------------------------------->
@@ -539,6 +553,7 @@ class Terminal(object):
                 # <---- Duplicate Descriptors --------------------------------
             else:
                 # Parent. Close Child PTY's
+                salt.utils.crypt.reinit_crypto()
                 os.close(stdout_child_fd)
                 os.close(stderr_child_fd)
 
@@ -554,7 +569,10 @@ class Terminal(object):
             try:
                 if self.stdin_logger:
                     self.stdin_logger.log(self.stdin_logger_level, data)
-                written = os.write(self.child_fd, data)
+                if six.PY3:
+                    written = os.write(self.child_fd, data.encode(__salt_system_encoding__))
+                else:
+                    written = os.write(self.child_fd, data)
             except OSError as why:
                 if why.errno == errno.EPIPE:  # broken pipe
                     os.close(self.child_fd)
@@ -625,7 +643,9 @@ class Terminal(object):
             if self.child_fde in rlist:
                 try:
                     stderr = self._translate_newlines(
-                        os.read(self.child_fde, maxsize)
+                        salt.utils.stringutils.to_unicode(
+                            os.read(self.child_fde, maxsize)
+                        )
                     )
 
                     if not stderr:
@@ -656,7 +676,9 @@ class Terminal(object):
             if self.child_fd in rlist:
                 try:
                     stdout = self._translate_newlines(
-                        os.read(self.child_fd, maxsize)
+                        salt.utils.stringutils.to_unicode(
+                            os.read(self.child_fd, maxsize)
+                        )
                     )
 
                     if not stdout:
@@ -664,7 +686,7 @@ class Terminal(object):
                         stdout = None
                     else:
                         if self.stream_stdout:
-                            self.stream_stdout.write(stdout)
+                            self.stream_stdout.write(salt.utils.stringutils.to_str(stdout))
                             self.stream_stdout.flush()
 
                         if self.stdout_logger:
@@ -687,9 +709,9 @@ class Terminal(object):
         def __detect_parent_terminal_size(self):
             try:
                 TIOCGWINSZ = getattr(termios, 'TIOCGWINSZ', 1074295912)
-                packed = struct.pack('HHHH', 0, 0, 0, 0)
+                packed = struct.pack(b'HHHH', 0, 0, 0, 0)
                 ioctl = fcntl.ioctl(sys.stdin.fileno(), TIOCGWINSZ, packed)
-                return struct.unpack('HHHH', ioctl)[0:2]
+                return struct.unpack(b'HHHH', ioctl)[0:2]
             except IOError:
                 # Return a default value of 24x80
                 return 24, 80
@@ -710,9 +732,9 @@ class Terminal(object):
                 )
 
             TIOCGWINSZ = getattr(termios, 'TIOCGWINSZ', 1074295912)
-            packed = struct.pack('HHHH', 0, 0, 0, 0)
+            packed = struct.pack(b'HHHH', 0, 0, 0, 0)
             ioctl = fcntl.ioctl(self.child_fd, TIOCGWINSZ, packed)
-            return struct.unpack('HHHH', ioctl)[0:2]
+            return struct.unpack(b'HHHH', ioctl)[0:2]
 
         def setwinsize(self, rows, cols):
             '''
@@ -738,7 +760,7 @@ class Terminal(object):
                 # Same bits, but with sign.
                 TIOCSWINSZ = -2146929561
             # Note, assume ws_xpixel and ws_ypixel are zero.
-            packed = struct.pack('HHHH', rows, cols, 0, 0)
+            packed = struct.pack(b'HHHH', rows, cols, 0, 0)
             fcntl.ioctl(self.child_fd, TIOCSWINSZ, packed)
 
         def isalive(self,
@@ -783,7 +805,7 @@ class Terminal(object):
                         'else call waitpid() on our process?'
                     )
                 else:
-                    raise err
+                    six.reraise(*sys.exc_info())
 
             # I have to do this twice for Solaris.
             # I can't even believe that I figured this out...
@@ -802,7 +824,7 @@ class Terminal(object):
                             'someone else call waitpid() on our process?'
                         )
                     else:
-                        raise
+                        six.reraise(*sys.exc_info())
 
                 # If pid is still 0 after two calls to waitpid() then the
                 # process really is alive. This seems to work on all platforms,

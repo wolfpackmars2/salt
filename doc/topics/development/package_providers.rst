@@ -137,11 +137,11 @@ The second return value will be a string with two possible values:
 
 Both before and after the installing the target(s), you should run
 :strong:`list_pkgs` to obtain a list of the installed packages. You should then
-return the output of ``salt.utils.compare_dicts()``
+return the output of ``salt.utils.data.compare_dicts()``:
 
 .. code-block:: python
 
-        return salt.utils.compare_dicts(old, new)
+    return salt.utils.data.compare_dicts(old, new)
 
 
 remove
@@ -321,5 +321,3 @@ packages. It will also return errors in the same manner as `file_list`.
                   'kernel': ['/boot/.vmlinuz-2.6.32-279.el6.x86_64.hmac',
                              '/boot/System.map-2.6.32-279.el6.x86_64',
                              '...SNIP...']}}
-
-

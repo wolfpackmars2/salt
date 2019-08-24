@@ -6,28 +6,34 @@ See http://code.google.com/p/psutil.
 :depends:   - psutil Python module, version 0.3.0 or later
             - python-utmp package (optional)
 '''
-from __future__ import absolute_import
 
 # Import python libs
+from __future__ import absolute_import, unicode_literals, print_function
 import time
 import datetime
+import re
 
 # Import salt libs
+import salt.utils.data
 from salt.exceptions import SaltInvocationError, CommandExecutionError
 
 # Import third party libs
+import salt.utils.decorators.path
+from salt.ext import six
+# pylint: disable=import-error
 try:
-    import psutil
+    import salt.utils.psutil_compat as psutil
 
     HAS_PSUTIL = True
-    PSUTIL2 = psutil.version_info >= (2, 0)
+    PSUTIL2 = getattr(psutil, 'version_info', ()) >= (2, 0)
 except ImportError:
     HAS_PSUTIL = False
+# pylint: enable=import-error
 
 
 def __virtual__():
     if not HAS_PSUTIL:
-        return False
+        return False, 'The ps module cannot be loaded: python module psutil not installed.'
 
     # Functions and attributes used in this execution module seem to have been
     # added as of psutil 0.3.0, from an inspection of the source code. Only
@@ -38,7 +44,7 @@ def __virtual__():
     # as of Dec. 2013 EPEL is on 0.6.1, Debian 7 is on 0.5.1, etc.).
     if psutil.version_info >= (0, 3, 0):
         return True
-    return False
+    return (False, 'The ps execution module cannot be loaded: the psutil python module version {0} is less than 0.3.0'.format(psutil.version_info))
 
 
 def _get_proc_cmdline(proc):
@@ -47,7 +53,10 @@ def _get_proc_cmdline(proc):
 
     It's backward compatible with < 2.0 versions of psutil.
     '''
-    return proc.cmdline() if PSUTIL2 else proc.cmdline
+    try:
+        return salt.utils.data.decode(proc.cmdline() if PSUTIL2 else proc.cmdline)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return []
 
 
 def _get_proc_create_time(proc):
@@ -56,7 +65,10 @@ def _get_proc_create_time(proc):
 
     It's backward compatible with < 2.0 versions of psutil.
     '''
-    return proc.create_time() if PSUTIL2 else proc.create_time
+    try:
+        return salt.utils.data.decode(proc.create_time() if PSUTIL2 else proc.create_time)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return None
 
 
 def _get_proc_name(proc):
@@ -65,7 +77,10 @@ def _get_proc_name(proc):
 
     It's backward compatible with < 2.0 versions of psutil.
     '''
-    return proc.name() if PSUTIL2 else proc.name
+    try:
+        return salt.utils.data.decode(proc.name() if PSUTIL2 else proc.name)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return []
 
 
 def _get_proc_status(proc):
@@ -74,7 +89,10 @@ def _get_proc_status(proc):
 
     It's backward compatible with < 2.0 versions of psutil.
     '''
-    return proc.status() if PSUTIL2 else proc.status
+    try:
+        return salt.utils.data.decode(proc.status() if PSUTIL2 else proc.status)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return None
 
 
 def _get_proc_username(proc):
@@ -83,7 +101,10 @@ def _get_proc_username(proc):
 
     It's backward compatible with < 2.0 versions of psutil.
     '''
-    return proc.username() if PSUTIL2 else proc.username
+    try:
+        return salt.utils.data.decode(proc.username() if PSUTIL2 else proc.username)
+    except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError):
+        return None
 
 
 def _get_proc_pid(proc):
@@ -111,18 +132,22 @@ def top(num_processes=5, interval=3):
     '''
     result = []
     start_usage = {}
-    for pid in psutil.get_pid_list():
+    for pid in psutil.pids():
         try:
             process = psutil.Process(pid)
-            user, system = process.get_cpu_times()
+            user, system = process.cpu_times()
+        except ValueError:
+            user, system, _, _ = process.cpu_times()
         except psutil.NoSuchProcess:
             continue
         start_usage[process] = user + system
     time.sleep(interval)
     usage = set()
-    for process, start in start_usage.items():
+    for process, start in six.iteritems(start_usage):
         try:
-            user, system = process.get_cpu_times()
+            user, system = process.cpu_times()
+        except ValueError:
+            user, system, _, _ = process.cpu_times()
         except psutil.NoSuchProcess:
             continue
         now = user + system
@@ -132,8 +157,8 @@ def top(num_processes=5, interval=3):
     for idx, (diff, process) in enumerate(reversed(sorted(usage))):
         if num_processes and idx >= num_processes:
             break
-        if len(_get_proc_cmdline(process)) == 0:
-            cmdline = [_get_proc_name(process)]
+        if not _get_proc_cmdline(process):
+            cmdline = _get_proc_name(process)
         else:
             cmdline = _get_proc_cmdline(process)
         info = {'cmd': cmdline,
@@ -144,9 +169,9 @@ def top(num_processes=5, interval=3):
                 'cpu': {},
                 'mem': {},
         }
-        for key, value in process.get_cpu_times()._asdict().items():
+        for key, value in six.iteritems(process.cpu_times()._asdict()):
             info['cpu'][key] = value
-        for key, value in process.get_memory_info()._asdict().items():
+        for key, value in six.iteritems(process.memory_info()._asdict()):
             info['mem'][key] = value
         result.append(info)
 
@@ -163,7 +188,7 @@ def get_pid_list():
 
         salt '*' ps.get_pid_list
     '''
-    return psutil.get_pid_list()
+    return psutil.pids()
 
 
 def proc_info(pid, attrs=None):
@@ -277,7 +302,7 @@ def pkill(pattern, user=None, signal=15, full=False):
         return {'killed': killed}
 
 
-def pgrep(pattern, user=None, full=False):
+def pgrep(pattern, user=None, full=False, pattern_is_regex=False):
     '''
     Return the pids for processes matching a pattern.
 
@@ -298,6 +323,12 @@ def pgrep(pattern, user=None, full=False):
         A boolean value indicating whether only the name of the command or
         the full command line should be matched against the pattern.
 
+    pattern_is_regex
+        This flag enables ps.pgrep to mirror the regex search functionality
+         found in the pgrep command line utility.
+
+        .. versionadded:: Neon
+
     **Examples:**
 
     Find all httpd processes on all 'www' minions:
@@ -312,14 +343,28 @@ def pgrep(pattern, user=None, full=False):
 
         salt '*' ps.pgrep bash user=tom
     '''
+    procs = []
+
+    if pattern_is_regex:
+        pattern = re.compile(str(pattern))
 
     procs = []
     for proc in psutil.process_iter():
-        name_match = pattern in ' '.join(_get_proc_cmdline(proc)) if full \
-            else pattern in _get_proc_name(proc)
+        if full:
+            process_line = ' '.join(_get_proc_cmdline(proc))
+        else:
+            process_line = _get_proc_name(proc)
+
+        if pattern_is_regex:
+            name_match = re.search(pattern, process_line)
+        else:
+            name_match = pattern in process_line
+
         user_match = True if user is None else user == _get_proc_username(proc)
+
         if name_match and user_match:
             procs.append(_get_proc_pid(proc))
+
     return procs or None
 
 
@@ -473,6 +518,9 @@ def total_physical_memory():
 
         salt '*' ps.total_physical_memory
     '''
+    if psutil.version_info < (0, 6, 0):
+        msg = 'virtual_memory is only available in psutil 0.6.0 or greater'
+        raise CommandExecutionError(msg)
     try:
         return psutil.virtual_memory().total
     except AttributeError:
@@ -523,7 +571,7 @@ def boot_time(time_format=None):
     except AttributeError:
         # get_boot_time() has been removed in newer psutil versions, and has
         # been replaced by boot_time() which provides the same information.
-        b_time = int(psutil.get_boot_time())
+        b_time = int(psutil.boot_time())
     if time_format:
         # Load epoch timestamp as a datetime.datetime object
         b_time = datetime.datetime.fromtimestamp(b_time)
@@ -547,9 +595,9 @@ def network_io_counters(interface=None):
         salt '*' ps.network_io_counters interface=eth0
     '''
     if not interface:
-        return dict(psutil.network_io_counters()._asdict())
+        return dict(psutil.net_io_counters()._asdict())
     else:
-        stats = psutil.network_io_counters(pernic=True)
+        stats = psutil.net_io_counters(pernic=True)
         if interface in stats:
             return dict(stats[interface]._asdict())
         else:
@@ -589,13 +637,13 @@ def get_users():
         salt '*' ps.get_users
     '''
     try:
-        recs = psutil.get_users()
+        recs = psutil.users()
         return [dict(x._asdict()) for x in recs]
     except AttributeError:
         # get_users is only present in psutil > v0.5.0
         # try utmp
         try:
-            import utmp
+            import utmp  # pylint: disable=import-error
 
             result = []
             while True:
@@ -611,17 +659,98 @@ def get_users():
         except ImportError:
             return False
 
-# This is a possible last ditch method
-# result = []
-#        w = __salt__['cmd.run'](
-#            'who', env='{"LC_ALL": "en_US.UTF-8"}').splitlines()
-#        for u in w:
-#            u = u.split()
-#            started = __salt__['cmd.run'](
-#                'date --d "{0} {1}" +%s'.format(u[2], u[3])).strip()
-#            rec = {'name': u[0], 'terminal': u[1],
-#                   'started': started, 'host': None}
-#            if len(u) > 4:
-#                rec['host'] = u[4][1:-1]
-#            result.append(rec)
-#        return result
+
+def lsof(name):
+    '''
+    Retrieve the lsof information of the given process name.
+
+    CLI Example:
+
+    .. code-block:: bash
+
+        salt '*' ps.lsof apache2
+    '''
+    sanitize_name = six.text_type(name)
+    lsof_infos = __salt__['cmd.run']("lsof -c " + sanitize_name)
+    ret = []
+    ret.extend([sanitize_name, lsof_infos])
+    return ret
+
+
+@salt.utils.decorators.path.which('netstat')
+def netstat(name):
+    '''
+    Retrieve the netstat information of the given process name.
+
+    CLI Example:
+
+    .. code-block:: bash
+
+        salt '*' ps.netstat apache2
+    '''
+    sanitize_name = six.text_type(name)
+    netstat_infos = __salt__['cmd.run']("netstat -nap")
+    found_infos = []
+    ret = []
+    for info in netstat_infos.splitlines():
+        if info.find(sanitize_name) != -1:
+            found_infos.append(info)
+    ret.extend([sanitize_name, found_infos])
+    return ret
+
+
+@salt.utils.decorators.path.which('ss')
+def ss(name):
+    '''
+    Retrieve the ss information of the given process name.
+
+    CLI Example:
+
+    .. code-block:: bash
+
+        salt '*' ps.ss apache2
+
+    .. versionadded:: 2016.11.6
+
+    '''
+    sanitize_name = six.text_type(name)
+    ss_infos = __salt__['cmd.run']("ss -neap")
+    found_infos = []
+    ret = []
+    for info in ss_infos.splitlines():
+        if info.find(sanitize_name) != -1:
+            found_infos.append(info)
+    ret.extend([sanitize_name, found_infos])
+    return ret
+
+
+def psaux(name):
+    '''
+    Retrieve information corresponding to a "ps aux" filtered
+    with the given pattern. It could be just a name or a regular
+    expression (using python search from "re" module).
+
+    CLI Example:
+
+    .. code-block:: bash
+
+        salt '*' ps.psaux www-data.+apache2
+    '''
+    sanitize_name = six.text_type(name)
+    pattern = re.compile(sanitize_name)
+    salt_exception_pattern = re.compile("salt.+ps.psaux.+")
+    ps_aux = __salt__['cmd.run']("ps aux")
+    found_infos = []
+    ret = []
+    nb_lines = 0
+    for info in ps_aux.splitlines():
+        found = pattern.search(info)
+        if found is not None:
+            # remove 'salt' command from results
+            if not salt_exception_pattern.search(info):
+                nb_lines += 1
+                found_infos.append(info)
+    pid_count = six.text_type(nb_lines) + " occurence(s)."
+    ret = []
+    ret.extend([sanitize_name, found_infos, pid_count])
+    return ret

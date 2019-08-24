@@ -3,30 +3,36 @@
 Display clean output of an overstate stage
 ==========================================
 
-This outputter is used to display :ref:`OverState <states-overstate>` stages,
-and should not be called directly.
+This outputter is used to display :ref:`Orchestrate Runner
+<orchestrate-runner>` stages, and should not be called directly.
 '''
-from __future__ import absolute_import
+
+# Import python libs
+from __future__ import absolute_import, print_function, unicode_literals
+
+# Import Salt libs
+import salt.utils.color
+
+# Import 3rd-party libs
+from salt.ext import six
+
+# [{'group2': {'match': ['fedora17-2', 'fedora17-3'],
+#              'require': ['group1'],
+#              'sls': ['nginx', 'edit']}
+#              }
+#              ]
 
 
-#[{'group2': {'match': ['fedora17-2', 'fedora17-3'],
-#             'require': ['group1'],
-#             'sls': ['nginx', 'edit']}
-#             }
-#             ]
-
-# Import salt libs
-import salt.utils
-
-
-def output(data):
+def output(data, **kwargs):  # pylint: disable=unused-argument
     '''
     Format the data for printing stage information from the overstate system
     '''
-    colors = salt.utils.get_colors(__opts__.get('color'))
+    colors = salt.utils.color.get_colors(
+            __opts__.get('color'),
+            __opts__.get('color_theme'))
     ostr = ''
     for comp in data:
-        for name, stage in comp.items():
+        for name, stage in six.iteritems(comp):
             ostr += '{0}{1}: {2}\n'.format(
                     colors['LIGHT_BLUE'],
                     name,
