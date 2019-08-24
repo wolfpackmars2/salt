@@ -1619,7 +1619,7 @@ def list_repos(**kwargs):
         repo['enabled'] = not repo['disabled']  # This is for compatibility with the other modules
         repo['dist'] = source.dist
         repo['type'] = source.type
-        repo['uri'] = source.uri.rstrip('/')
+        repo['uri'] = source.uri
         repo['line'] = salt.utils.pkg.deb.strip_uri(source.line.strip())
         repo['architectures'] = getattr(source, 'architectures', [])
         repos.setdefault(source.uri, []).append(repo)
